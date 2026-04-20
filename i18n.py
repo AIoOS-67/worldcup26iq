@@ -1,0 +1,495 @@
+"""i18n — 5-language translation dictionary + helper for WorldCup26IQ."""
+from __future__ import annotations
+
+import streamlit as st
+
+
+LANGUAGES = {
+    "en": "English",
+    "zh": "中文",
+    "es": "Español",
+    "pt": "Português",
+    "fr": "Français",
+}
+
+
+T: dict[str, dict[str, str]] = {
+    # ---------- sidebar ----------
+    "app_title":    {"en": "⚽ WorldCup26IQ",
+                     "zh": "⚽ WorldCup26IQ",
+                     "es": "⚽ WorldCup26IQ",
+                     "pt": "⚽ WorldCup26IQ",
+                     "fr": "⚽ WorldCup26IQ"},
+    "app_tagline":  {"en": "Dixon-Coles + Monte Carlo for the 2026 FIFA World Cup.",
+                     "zh": "2026 世界杯的 Dixon-Coles + 蒙特卡洛模型。",
+                     "es": "Dixon-Coles + Monte Carlo para la Copa Mundial 2026.",
+                     "pt": "Dixon-Coles + Monte Carlo para a Copa do Mundo 2026.",
+                     "fr": "Dixon-Coles + Monte Carlo pour la Coupe du Monde 2026."},
+    "navigate":     {"en": "Navigate", "zh": "导航",
+                     "es": "Navegar", "pt": "Navegar", "fr": "Menu"},
+    "language":     {"en": "Language", "zh": "语言",
+                     "es": "Idioma", "pt": "Idioma", "fr": "Langue"},
+    "sidebar_foot": {"en": "49K internationals since 1872 · Polymarket live odds · 10K Monte Carlo runs.",
+                     "zh": "1872 年以来 49K 场国际比赛 · Polymarket 实时赔率 · 10K 次蒙特卡洛模拟。",
+                     "es": "49K partidos internacionales desde 1872 · cuotas en vivo de Polymarket · 10K simulaciones Monte Carlo.",
+                     "pt": "49K jogos internacionais desde 1872 · odds ao vivo do Polymarket · 10K simulações Monte Carlo.",
+                     "fr": "49K matchs internationaux depuis 1872 · cotes Polymarket en direct · 10K simulations Monte Carlo."},
+
+    # ---------- nav labels ----------
+    "nav_hero":     {"en": "🏠 Hero", "zh": "🏠 首页",
+                     "es": "🏠 Inicio", "pt": "🏠 Início", "fr": "🏠 Accueil"},
+    "nav_champ":    {"en": "🏆 Champion Probabilities", "zh": "🏆 夺冠概率",
+                     "es": "🏆 Probabilidades de Campeón", "pt": "🏆 Probabilidades de Campeão",
+                     "fr": "🏆 Probabilités de Titre"},
+    "nav_misp":     {"en": "💸 Mispricing Leaderboard", "zh": "💸 市场偏差排行榜",
+                     "es": "💸 Ranking de Mispricing", "pt": "💸 Ranking de Mispricing",
+                     "fr": "💸 Classement des Écarts"},
+    "nav_whatif":   {"en": "🎲 What-If Simulator", "zh": "🎲 What-If 模拟器",
+                     "es": "🎲 Simulador What-If", "pt": "🎲 Simulador What-If",
+                     "fr": "🎲 Simulateur What-If"},
+    "nav_ask":      {"en": "🤖 Ask the Model", "zh": "🤖 问问模型",
+                     "es": "🤖 Pregunta al Modelo", "pt": "🤖 Pergunte ao Modelo",
+                     "fr": "🤖 Interrogez le Modèle"},
+    "nav_stage":    {"en": "📊 Stage Reach", "zh": "📊 晋级概率",
+                     "es": "📊 Fases Alcanzadas", "pt": "📊 Fases Alcançadas",
+                     "fr": "📊 Tours Atteints"},
+    "nav_calib":    {"en": "📏 Calibration (Backtest)", "zh": "📏 校准 (回测)",
+                     "es": "📏 Calibración (Backtest)", "pt": "📏 Calibração (Backtest)",
+                     "fr": "📏 Calibration (Backtest)"},
+    "nav_method":   {"en": "📖 Methodology", "zh": "📖 方法论",
+                     "es": "📖 Metodología", "pt": "📖 Metodologia", "fr": "📖 Méthodologie"},
+
+    # ---------- hero ----------
+    "hero_intro":   {"en": "A Dixon-Coles bivariate Poisson model, 10,000 Monte Carlo tournament runs, compared live against $700M in Polymarket winner markets.",
+                     "zh": "Dixon-Coles 双变量泊松模型，10,000 次蒙特卡洛赛事模拟，实时对比 7 亿美元交易量的 Polymarket 冠军市场。",
+                     "es": "Un modelo Poisson bivariado Dixon-Coles, 10.000 simulaciones Monte Carlo, comparado en vivo con $700M del mercado de Polymarket.",
+                     "pt": "Um modelo Poisson bivariado Dixon-Coles, 10.000 simulações Monte Carlo, comparado ao vivo com US$ 700M do mercado da Polymarket.",
+                     "fr": "Un modèle Poisson bivarié Dixon-Coles, 10 000 simulations Monte Carlo, comparé en direct aux 700 M$ du marché Polymarket."},
+    "hero_wrong":   {"en": "Polymarket is {over_pp}% wrong about {over_flag} {over_team}. And {under_pp}% wrong about {under_flag} {under_team}.",
+                     "zh": "Polymarket 对 {over_flag} {over_team} 的定价偏差 {over_pp}%，对 {under_flag} {under_team} 的定价偏差 {under_pp}%。",
+                     "es": "Polymarket se equivoca en {over_pp}% con {over_flag} {over_team}. Y en {under_pp}% con {under_flag} {under_team}.",
+                     "pt": "Polymarket erra em {over_pp}% sobre {over_flag} {over_team}. E em {under_pp}% sobre {under_flag} {under_team}.",
+                     "fr": "Polymarket se trompe de {over_pp}% sur {over_flag} {over_team}. Et de {under_pp}% sur {under_flag} {under_team}."},
+    "kpi_biggest_under":{"en": "BIGGEST UNDER", "zh": "最被低估",
+                         "es": "MÁS INFRAVALORADO", "pt": "MAIS SUBVALORIZADO", "fr": "PLUS SOUS-COTÉ"},
+    "kpi_biggest_over": {"en": "BIGGEST OVER", "zh": "最被高估",
+                         "es": "MÁS SOBREVALORADO", "pt": "MAIS SUPERVALORIZADO", "fr": "PLUS SURCOTÉ"},
+    "kpi_brier":    {"en": "MODEL BRIER SKILL", "zh": "模型 BRIER 技巧分",
+                     "es": "BRIER SKILL DEL MODELO", "pt": "BRIER SKILL DO MODELO", "fr": "BRIER SKILL DU MODÈLE"},
+    "kpi_brier_sub":{"en": "vs uniform baseline on WC 2018 + 2022 (128 matches)",
+                     "zh": "相对均匀基线 · WC 2018 + 2022 共 128 场",
+                     "es": "vs base uniforme en WC 2018 + 2022 (128 partidos)",
+                     "pt": "vs linha de base uniforme em WC 2018 + 2022 (128 jogos)",
+                     "fr": "vs base uniforme sur CM 2018 + 2022 (128 matchs)"},
+    "kpi_coverage": {"en": "MARKET COVERAGE", "zh": "市场覆盖",
+                     "es": "COBERTURA DE MERCADO", "pt": "COBERTURA DE MERCADO", "fr": "COUVERTURE DU MARCHÉ"},
+    "kpi_coverage_sub":{"en": "≥ $500K Polymarket liquidity",
+                        "zh": "≥ $500K Polymarket 流动性",
+                        "es": "≥ $500K de liquidez en Polymarket",
+                        "pt": "≥ $500K de liquidez na Polymarket",
+                        "fr": "≥ 500K$ de liquidité Polymarket"},
+    "kpi_mkt_model":{"en": "mkt {mkt}% → model {model}%",
+                     "zh": "市场 {mkt}% → 模型 {model}%",
+                     "es": "mercado {mkt}% → modelo {model}%",
+                     "pt": "mercado {mkt}% → modelo {model}%",
+                     "fr": "marché {mkt}% → modèle {model}%"},
+
+    "section_top5_fav":  {"en": "🏆 Model top-5 favourites", "zh": "🏆 模型看好前 5",
+                          "es": "🏆 Top-5 del modelo", "pt": "🏆 Top-5 do modelo",
+                          "fr": "🏆 Top-5 du modèle"},
+    "section_top5_mis":  {"en": "💸 Top 5 mispricings (ranked by |edge| × √liquidity)",
+                          "zh": "💸 前 5 市场偏差（|edge| × √流动性 排序）",
+                          "es": "💸 Top 5 mispricings (|edge| × √liquidez)",
+                          "pt": "💸 Top 5 mispricings (|edge| × √liquidez)",
+                          "fr": "💸 Top 5 écarts (|edge| × √liquidité)"},
+    "section_credibility":{"en": "📏 Model credibility", "zh": "📏 模型可信度",
+                           "es": "📏 Credibilidad del modelo", "pt": "📏 Credibilidade do modelo",
+                           "fr": "📏 Crédibilité du modèle"},
+    "credibility_text":  {"en": "Refit strictly pre-tournament, scored every match of 2018 + 2022 WCs. Brier skill vs uniform: **{skill:+.1f}%**. Calibration is strongest in the 20–50% range — where most predictions live.",
+                          "zh": "严格使用赛前数据重新拟合，预测 2018 + 2022 世界杯每场比赛。相对均匀基线 Brier 技巧分：**{skill:+.1f}%**。20–50% 概率区间校准最稳，也是大部分预测落点。",
+                          "es": "Reajustado estrictamente con datos pre-torneo, predijo cada partido de las WC 2018 + 2022. Brier skill: **{skill:+.1f}%**. La calibración es más sólida en el rango 20–50% — donde vive la mayoría de las predicciones.",
+                          "pt": "Reajustado estritamente com dados pré-torneio, previu cada jogo das Copas 2018 + 2022. Brier skill: **{skill:+.1f}%**. A calibração é mais sólida na faixa 20–50% — onde vive a maioria das previsões.",
+                          "fr": "Réentraîné strictement avant-tournoi, a prédit chaque match des CM 2018 + 2022. Brier skill : **{skill:+.1f}%**. La calibration est meilleure dans la plage 20–50% — où vit la plupart des prédictions."},
+    "section_different": {"en": "🧭 What makes this different", "zh": "🧭 我们与众不同的地方",
+                          "es": "🧭 Qué nos hace diferentes", "pt": "🧭 O que nos torna diferentes",
+                          "fr": "🧭 Ce qui nous distingue"},
+    "diff_1":       {"en": "🎯 **Model-backed, not user-input.** Every probability comes from a Dixon-Coles fit on 7K internationals + 10K Monte Carlo runs — not random scenario picking.",
+                     "zh": "🎯 **模型驱动，非用户输入。** 每个概率都来自 Dixon-Coles（7K 国际比赛拟合）+ 10K 蒙特卡洛 — 不是瞎点场景。",
+                     "es": "🎯 **Basado en modelo, no en usuario.** Cada probabilidad viene de Dixon-Coles (7K internacionales) + 10K Monte Carlo — no escenarios al azar.",
+                     "pt": "🎯 **Baseado em modelo, não no usuário.** Cada probabilidade vem de Dixon-Coles (7K internacionais) + 10K Monte Carlo — não cenários aleatórios.",
+                     "fr": "🎯 **Guidé par le modèle, pas par l'utilisateur.** Chaque probabilité vient de Dixon-Coles (7K internationaux) + 10K Monte Carlo — pas de scénarios au hasard."},
+    "diff_2":       {"en": "💸 **Live vs Polymarket.** We rank every team by how wrong the market is, weighted by market liquidity.",
+                     "zh": "💸 **实时对比 Polymarket。** 每队按「市场错得多离谱」× 流动性开方 排序。",
+                     "es": "💸 **En vivo vs Polymarket.** Ordenamos cada equipo por cuán equivocado está el mercado, ponderado por liquidez.",
+                     "pt": "💸 **Ao vivo vs Polymarket.** Classificamos cada seleção pelo erro do mercado, ponderado pela liquidez.",
+                     "fr": "💸 **En direct vs Polymarket.** Nous classons chaque équipe par l'ampleur de l'erreur du marché, pondérée par la liquidité."},
+    "diff_3":       {"en": "📏 **Backtested & honest.** +7.0% Brier skill vs a uniform baseline on 128 real WC matches (2018 + 2022).",
+                     "zh": "📏 **严格回测，诚实交代。** 在 128 场真实世界杯比赛（2018 + 2022）上相对均匀基线取得 +7.0% Brier skill。",
+                     "es": "📏 **Backtested y honesto.** +7,0% Brier skill vs base uniforme en 128 partidos reales de WC (2018 + 2022).",
+                     "pt": "📏 **Backtested e honesto.** +7,0% Brier skill vs base uniforme em 128 jogos reais (2018 + 2022).",
+                     "fr": "📏 **Backtesté & honnête.** +7,0% de Brier skill vs base uniforme sur 128 matchs réels (2018 + 2022)."},
+    "diff_4":       {"en": "🎲 **Interactive.** The *What-If* page re-runs the whole bracket conditional on your picks — see probabilities shift in real time.",
+                     "zh": "🎲 **可交互。** *What-If* 页面根据你的选择条件性重跑整张签表 — 实时看概率怎么变。",
+                     "es": "🎲 **Interactivo.** La página *What-If* vuelve a correr todo el cuadro según tus elecciones — observa los cambios en tiempo real.",
+                     "pt": "🎲 **Interativo.** A página *What-If* refaz toda a chave conforme suas escolhas — veja as probabilidades mudarem em tempo real.",
+                     "fr": "🎲 **Interactif.** La page *What-If* relance tout le tableau selon vos choix — voyez les probabilités changer en temps réel."},
+    "explore_sidebar":{"en": "Use the sidebar to explore. ⏭️",
+                       "zh": "用左侧菜单探索。⏭️",
+                       "es": "Usa la barra lateral para explorar. ⏭️",
+                       "pt": "Use a barra lateral para explorar. ⏭️",
+                       "fr": "Utilisez la barre latérale pour explorer. ⏭️"},
+
+    # ---------- Champion page ----------
+    "champ_title":  {"en": "🏆 Champion Probabilities", "zh": "🏆 夺冠概率",
+                     "es": "🏆 Probabilidades de Campeón", "pt": "🏆 Probabilidades de Campeão",
+                     "fr": "🏆 Probabilités de Titre"},
+    "champ_caption":{"en": "From {n} teams across 10,000 Monte Carlo tournament runs.",
+                     "zh": "基于 {n} 支球队、10,000 次蒙特卡洛赛事模拟。",
+                     "es": "De {n} equipos en 10.000 simulaciones Monte Carlo.",
+                     "pt": "De {n} seleções em 10.000 simulações Monte Carlo.",
+                     "fr": "Pour {n} équipes sur 10 000 simulations Monte Carlo."},
+    "champ_chart":  {"en": "Top 20 — Model P(Win the 2026 World Cup)",
+                     "zh": "前 20 — 模型夺冠概率",
+                     "es": "Top 20 — Probabilidad de ganar la Copa 2026",
+                     "pt": "Top 20 — Probabilidade de vencer a Copa 2026",
+                     "fr": "Top 20 — P(Remporter la CM 2026)"},
+    "full_table":   {"en": "Full table (all 48 teams)", "zh": "完整表格（48 支球队）",
+                     "es": "Tabla completa (48 equipos)", "pt": "Tabela completa (48 seleções)",
+                     "fr": "Tableau complet (48 équipes)"},
+
+    # ---------- Mispricing Leaderboard ----------
+    "misp_title":   {"en": "💸 Mispricing Leaderboard", "zh": "💸 市场偏差排行榜",
+                     "es": "💸 Ranking de Mispricing", "pt": "💸 Ranking de Mispricing",
+                     "fr": "💸 Classement des Écarts"},
+    "misp_caption": {"en": "Ranked by mispricing score = |edge| × √(liquidity / $1M). Filtered to {n} markets with ≥$500K liquidity.",
+                     "zh": "按偏差分 = |edge| × √(流动性/$1M) 排序。筛选出 {n} 个流动性 ≥$500K 的市场。",
+                     "es": "Ordenado por puntuación = |edge| × √(liquidez/$1M). Filtrado a {n} mercados con liquidez ≥$500K.",
+                     "pt": "Ordenado por pontuação = |edge| × √(liquidez/$1M). Filtrado para {n} mercados com liquidez ≥$500K.",
+                     "fr": "Classé par score = |edge| × √(liquidité/1M$). Filtré à {n} marchés avec liquidité ≥500K$."},
+    "markets_analysed":{"en": "Markets analysed", "zh": "已分析市场",
+                        "es": "Mercados analizados", "pt": "Mercados analisados", "fr": "Marchés analysés"},
+    "total_liquidity":{"en": "Total WC-2026 liquidity", "zh": "WC-2026 总流动性",
+                       "es": "Liquidez total WC-2026", "pt": "Liquidez total WC-2026", "fr": "Liquidité totale CM-2026"},
+    "misp_rank_head":{"en": "Ranked by |edge| × √liquidity",
+                      "zh": "按 |edge| × √流动性 排序",
+                      "es": "Ordenado por |edge| × √liquidez",
+                      "pt": "Ordenado por |edge| × √liquidez",
+                      "fr": "Classé par |edge| × √liquidité"},
+    "col_rank":     {"en": "Rank", "zh": "名次", "es": "Rank", "pt": "Rank", "fr": "Rang"},
+    "col_team":     {"en": "Team", "zh": "球队", "es": "Equipo", "pt": "Seleção", "fr": "Équipe"},
+    "col_direction":{"en": "Direction", "zh": "方向", "es": "Dirección", "pt": "Direção", "fr": "Sens"},
+    "col_model":    {"en": "Model", "zh": "模型", "es": "Modelo", "pt": "Modelo", "fr": "Modèle"},
+    "col_market":   {"en": "Market", "zh": "市场", "es": "Mercado", "pt": "Mercado", "fr": "Marché"},
+    "col_reason":   {"en": "Reason (last 20 internationals)",
+                     "zh": "理由（最近 20 场国际赛）",
+                     "es": "Razón (últimos 20 internacionales)",
+                     "pt": "Razão (últimos 20 internacionais)",
+                     "fr": "Raison (20 derniers internationaux)"},
+    "scatter_title":{"en": "Model vs Market — all 43 covered teams",
+                     "zh": "模型 vs 市场 — 覆盖的 43 队",
+                     "es": "Modelo vs Mercado — las 43 selecciones cubiertas",
+                     "pt": "Modelo vs Mercado — as 43 seleções cobertas",
+                     "fr": "Modèle vs Marché — les 43 équipes couvertes"},
+
+    # ---------- What-If ----------
+    "whatif_title": {"en": "🎲 What-If Simulator", "zh": "🎲 What-If 模拟器",
+                     "es": "🎲 Simulador What-If", "pt": "🎲 Simulador What-If",
+                     "fr": "🎲 Simulateur What-If"},
+    "whatif_caption":{"en": "Lock who advances from each group, then re-run Monte Carlo tournaments conditional on your picks. See how champion probabilities shift in real time.",
+                      "zh": "锁定每组出线球队，然后根据你的选择条件性重跑蒙特卡洛 — 实时看夺冠概率怎么变。",
+                      "es": "Bloquea quién avanza de cada grupo y vuelve a correr simulaciones Monte Carlo condicionales. Mira cómo cambian las probabilidades en tiempo real.",
+                      "pt": "Fixe quem avança de cada grupo e refaça simulações Monte Carlo condicionais. Veja as probabilidades mudarem em tempo real.",
+                      "fr": "Verrouillez qui sort de chaque groupe et relancez des simulations Monte Carlo conditionnelles. Voyez les probabilités changer en temps réel."},
+    "whatif_lock":  {"en": "Lock group outcomes", "zh": "锁定小组结果",
+                     "es": "Bloquear resultados de grupos", "pt": "Fixar resultados dos grupos",
+                     "fr": "Verrouiller les résultats des groupes"},
+    "whatif_pick_caption":{"en": "For each group, pick a winner and runner-up (or leave as — auto — to let the model decide).",
+                           "zh": "每组选出线第 1 和第 2（或留「— 自动 —」让模型决定）。",
+                           "es": "Para cada grupo, elige ganador y segundo (o deja «— auto —» para que decida el modelo).",
+                           "pt": "Para cada grupo, escolha o vencedor e o vice (ou deixe «— auto —» para o modelo decidir).",
+                           "fr": "Pour chaque groupe, choisissez le vainqueur et le deuxième (ou laissez «— auto —» au modèle)."},
+    "whatif_auto":  {"en": "— auto —", "zh": "— 自动 —",
+                     "es": "— auto —", "pt": "— auto —", "fr": "— auto —"},
+    "whatif_winner":{"en": "Winner", "zh": "第 1", "es": "Ganador", "pt": "Vencedor", "fr": "Vainqueur"},
+    "whatif_runner":{"en": "Runner-up", "zh": "第 2", "es": "Segundo", "pt": "Vice", "fr": "Deuxième"},
+    "whatif_sims":  {"en": "Simulations", "zh": "模拟次数",
+                     "es": "Simulaciones", "pt": "Simulações", "fr": "Simulations"},
+    "whatif_run":   {"en": "🎲 Simulate", "zh": "🎲 开跑",
+                     "es": "🎲 Simular", "pt": "🎲 Simular", "fr": "🎲 Simuler"},
+    "whatif_reset": {"en": "Reset locks", "zh": "重置锁定",
+                     "es": "Reiniciar fijaciones", "pt": "Redefinir", "fr": "Réinitialiser"},
+    "whatif_spinner":{"en": "Running {n} Monte Carlo tournaments…",
+                      "zh": "正在跑 {n} 次蒙特卡洛…",
+                      "es": "Ejecutando {n} simulaciones Monte Carlo…",
+                      "pt": "Executando {n} simulações Monte Carlo…",
+                      "fr": "Exécution de {n} simulations Monte Carlo…"},
+    "whatif_results":{"en": "Results — {n_locked} lock(s) × {n_sims} sims",
+                      "zh": "结果 — {n_locked} 个锁定 × {n_sims} 次模拟",
+                      "es": "Resultados — {n_locked} fijaciones × {n_sims} sims",
+                      "pt": "Resultados — {n_locked} fixações × {n_sims} sims",
+                      "fr": "Résultats — {n_locked} verrou(s) × {n_sims} sims"},
+    "whatif_baseline":{"en": "Baseline", "zh": "基线",
+                       "es": "Base", "pt": "Base", "fr": "Base"},
+    "whatif_conditional":{"en": "Conditional", "zh": "条件",
+                          "es": "Condicional", "pt": "Condicional", "fr": "Conditionnel"},
+    "whatif_shifts":{"en": "Biggest probability shifts vs baseline",
+                     "zh": "与基线相比最大的概率变化",
+                     "es": "Mayores cambios de probabilidad vs base",
+                     "pt": "Maiores mudanças de probabilidade vs base",
+                     "fr": "Plus grands écarts de probabilité vs base"},
+    "whatif_hint":  {"en": "👆 Configure your group-stage picks above, then click **Simulate**.",
+                     "zh": "👆 先在上面选小组结果，然后点 **开跑**。",
+                     "es": "👆 Configura tus selecciones arriba y pulsa **Simular**.",
+                     "pt": "👆 Configure suas escolhas acima e clique em **Simular**.",
+                     "fr": "👆 Configurez vos choix ci-dessus, puis cliquez sur **Simuler**."},
+
+    # ---------- Ask the Model ----------
+    "ask_title":    {"en": "🤖 Ask the Model", "zh": "🤖 问问模型",
+                     "es": "🤖 Pregunta al Modelo", "pt": "🤖 Pergunte ao Modelo",
+                     "fr": "🤖 Interrogez le Modèle"},
+    "ask_caption":  {"en": "Ask a question in plain language. Claude parses your intent, routes it to the model, and replies with probabilities + a chart. Examples: «What if Saudi Arabia beats Argentina?», «Who is the biggest sleeper?», «France's best path to the final?»",
+                     "zh": "用日常语言提问。Claude 解析意图、调用模型、返回概率 + 图表。示例：「如果沙特再次击败阿根廷呢？」、「谁是最大的黑马？」、「法国进决赛的最佳路线？」",
+                     "es": "Haz una pregunta en lenguaje natural. Claude interpreta, consulta al modelo y responde con probabilidades + gráfico. Ejemplos: «¿Y si Arabia Saudí vuelve a ganar a Argentina?», «¿Quién es el caballo oscuro?»",
+                     "pt": "Faça uma pergunta em linguagem natural. Claude interpreta, consulta o modelo e responde com probabilidades + gráfico. Exemplos: «E se a Arábia Saudita vencer a Argentina de novo?», «Qual é a zebra?»",
+                     "fr": "Posez une question en langage naturel. Claude interprète, interroge le modèle et répond avec probabilités + graphique. Exemples : «Et si l'Arabie Saoudite bat à nouveau l'Argentine ?», «Qui est l'outsider ?»"},
+    "ask_placeholder":{"en": "Type your question…", "zh": "输入你的问题…",
+                       "es": "Escribe tu pregunta…", "pt": "Digite sua pergunta…",
+                       "fr": "Tapez votre question…"},
+    "ask_button":   {"en": "Ask", "zh": "提问",
+                     "es": "Preguntar", "pt": "Perguntar", "fr": "Demander"},
+    "ask_thinking": {"en": "Thinking…", "zh": "思考中…",
+                     "es": "Pensando…", "pt": "Pensando…", "fr": "Réflexion…"},
+    "ask_no_api":   {"en": "Claude API key not configured. Set `ANTHROPIC_API_KEY` in Streamlit Cloud secrets.",
+                     "zh": "Claude API 密钥未配置。请在 Streamlit Cloud secrets 里设置 `ANTHROPIC_API_KEY`。",
+                     "es": "API key de Claude no configurada. Configura `ANTHROPIC_API_KEY` en los secrets de Streamlit Cloud.",
+                     "pt": "Chave da API Claude não configurada. Configure `ANTHROPIC_API_KEY` nos secrets do Streamlit Cloud.",
+                     "fr": "Clé API Claude non configurée. Définissez `ANTHROPIC_API_KEY` dans les secrets Streamlit Cloud."},
+
+    # ---------- Stage Reach ----------
+    "stage_title":  {"en": "📊 Stage-Reach Probabilities", "zh": "📊 晋级阶段概率",
+                     "es": "📊 Probabilidades de Fase", "pt": "📊 Probabilidades de Fase",
+                     "fr": "📊 Probabilités par Tour"},
+    "stage_pick":   {"en": "Teams to compare", "zh": "选要对比的球队",
+                     "es": "Equipos a comparar", "pt": "Seleções para comparar",
+                     "fr": "Équipes à comparer"},
+
+    # ---------- Calibration ----------
+    "calib_title":  {"en": "📏 Calibration — How Honest Is the Model?",
+                     "zh": "📏 校准 — 模型有多诚实？",
+                     "es": "📏 Calibración — ¿Qué tan honesto es el modelo?",
+                     "pt": "📏 Calibração — Quão honesto é o modelo?",
+                     "fr": "📏 Calibration — Le modèle est-il honnête ?"},
+    "calib_caption":{"en": "We refit strictly on data before each past World Cup, then scored every match. Brier skill score compares against a uniform (1/3) baseline.",
+                     "zh": "在每届历史世界杯前严格重新拟合，然后预测每一场。Brier 技巧分对比均匀 (1/3) 基线。",
+                     "es": "Reajustamos estrictamente con datos anteriores a cada Copa y predijimos cada partido. El Brier skill se compara con base uniforme (1/3).",
+                     "pt": "Reajustamos estritamente com dados anteriores a cada Copa e previmos cada jogo. O Brier skill compara-se à base uniforme (1/3).",
+                     "fr": "Nous réentraînons strictement avec les données d'avant chaque Coupe, puis prédisons chaque match. Le Brier skill se compare à la base uniforme (1/3)."},
+    "by_tournament":{"en": "By tournament", "zh": "按届别",
+                     "es": "Por torneo", "pt": "Por torneio", "fr": "Par tournoi"},
+    "reliability_title":{"en": "Reliability Diagram (pooled predictions)",
+                         "zh": "可靠性图（全部预测汇总）",
+                         "es": "Diagrama de confiabilidad (predicciones agregadas)",
+                         "pt": "Diagrama de confiabilidade (previsões agregadas)",
+                         "fr": "Diagramme de fiabilité (prédictions agrégées)"},
+    "reliability_caption":{"en": "Dots on the diagonal = perfectly calibrated. Dot size = predictions in bucket.",
+                           "zh": "点越靠对角线 = 校准越好。点的大小 = 桶内预测数。",
+                           "es": "Puntos en la diagonal = perfectamente calibrado. Tamaño = predicciones por bin.",
+                           "pt": "Pontos na diagonal = perfeitamente calibrado. Tamanho = previsões por bin.",
+                           "fr": "Points sur la diagonale = parfaitement calibré. Taille = prédictions par bin."},
+    "all_backtest": {"en": "All {n} backtest predictions", "zh": "全部 {n} 条回测预测",
+                     "es": "Todas las {n} predicciones del backtest",
+                     "pt": "Todas as {n} previsões do backtest",
+                     "fr": "Toutes les {n} prédictions du backtest"},
+
+    # ---------- short labels that were left in English ----------
+    "champion_suffix":{"en": "champion", "zh": "冠军概率",
+                       "es": "de campeón", "pt": "de campeão", "fr": "de titre"},
+    "dir_under":    {"en": "⬆ UNDER", "zh": "⬆ 低估",
+                     "es": "⬆ INFRA", "pt": "⬆ SUBV", "fr": "⬆ SOUS"},
+    "dir_over":     {"en": "⬇ OVER", "zh": "⬇ 高估",
+                     "es": "⬇ SOBRE", "pt": "⬇ SUPER", "fr": "⬇ SUR"},
+    "last_n":       {"en": "last 20", "zh": "最近 20 场",
+                     "es": "últ. 20", "pt": "últ. 20", "fr": "20 derniers"},
+    "col_W":        {"en": "W", "zh": "胜", "es": "G", "pt": "V", "fr": "V"},
+    "col_D":        {"en": "D", "zh": "平", "es": "E", "pt": "E", "fr": "N"},
+    "col_L":        {"en": "L", "zh": "负", "es": "P", "pt": "D", "fr": "D"},
+    "col_gd":       {"en": "gd/g", "zh": "净胜/场",
+                     "es": "dif/p", "pt": "dif/j", "fr": "dif/m"},
+    "col_liq":      {"en": "liq ($)", "zh": "流动性 ($)",
+                     "es": "liq ($)", "pt": "liq ($)", "fr": "liq ($)"},
+    "col_score":    {"en": "score", "zh": "偏差分",
+                     "es": "score", "pt": "score", "fr": "score"},
+
+    # ---------- reason-text substring translations ----------
+    # Used for regex replacement on English-generated leaderboard reason strings.
+    "reason_last":  {"en": "last {n}",
+                     "zh": "最近 {n} 场",
+                     "es": "últimos {n}",
+                     "pt": "últimos {n}",
+                     "fr": "{n} derniers"},
+    "reason_gd":    {"en": "goal diff {sign}{val}/g",
+                     "zh": "净胜球 {sign}{val}/场",
+                     "es": "dif. goles {sign}{val}/p",
+                     "pt": "saldo {sign}{val}/j",
+                     "fr": "diff. buts {sign}{val}/m"},
+    "reason_opp":   {"en": "avg opp Elo {val}",
+                     "zh": "平均对手 Elo {val}",
+                     "es": "Elo rival prom. {val}",
+                     "pt": "Elo adv. médio {val}",
+                     "fr": "Elo adv. moy. {val}"},
+    "reason_narr_under":{"en": "model sees recent form the market isn't crediting.",
+                         "zh": "模型看到了市场不愿相信的近期状态。",
+                         "es": "el modelo ve forma reciente que el mercado no reconoce.",
+                         "pt": "o modelo vê forma recente que o mercado não reconhece.",
+                         "fr": "le modèle voit une forme récente que le marché ignore."},
+    "reason_narr_over": {"en": "market may be anchoring on historical reputation.",
+                         "zh": "市场可能被历史声誉所锚定。",
+                         "es": "el mercado parece anclarse en la reputación histórica.",
+                         "pt": "o mercado parece se apegar à reputação histórica.",
+                         "fr": "le marché semble s'ancrer sur la réputation historique."},
+
+    # ---------- Methodology full page ----------
+    "method_title":     {"en": "📖 Methodology & Honesty",
+                         "zh": "📖 方法论 & 诚实交代",
+                         "es": "📖 Metodología y Honestidad",
+                         "pt": "📖 Metodologia e Honestidade",
+                         "fr": "📖 Méthodologie & Honnêteté"},
+    "method_h_question":{"en": "The Question", "zh": "核心问题",
+                         "es": "La pregunta", "pt": "A pergunta", "fr": "La question"},
+    "method_p_question":{"en": "**Where does Polymarket misprice the 2026 FIFA World Cup — and why?**\n\nThe 48-team / 32-team knockout format is brand new. Markets have weak historical priors — which is exactly where a model trained on competitive match data can add value.",
+                         "zh": "**Polymarket 在 2026 世界杯的哪些地方定价错了——为什么？**\n\n48 队小组赛 + 32 队淘汰赛的新赛制从未出现过。市场的历史先验很弱——这正是用竞技比赛数据训练的模型能创造价值的地方。",
+                         "es": "**¿Dónde se equivoca Polymarket en la Copa del Mundo 2026 — y por qué?**\n\nEl formato de 48 equipos / 32 en eliminatorias es completamente nuevo. El mercado tiene prioris históricos débiles — justo donde un modelo entrenado en datos competitivos puede aportar valor.",
+                         "pt": "**Onde a Polymarket erra na Copa do Mundo 2026 — e por quê?**\n\nO formato de 48 seleções / 32 no mata-mata é totalmente novo. O mercado tem priors históricos fracos — exatamente onde um modelo treinado em dados competitivos pode agregar valor.",
+                         "fr": "**Où Polymarket se trompe-t-il sur la Coupe du Monde 2026 — et pourquoi ?**\n\nLe format à 48 équipes / élimination à 32 est totalement inédit. Le marché a de faibles a priori historiques — c'est précisément là qu'un modèle entraîné sur des données compétitives apporte de la valeur."},
+    "method_h_data":    {"en": "Data", "zh": "数据",
+                         "es": "Datos", "pt": "Dados", "fr": "Données"},
+    "method_p_data":    {"en": "- **49,287 men's international matches** since 1872 (martj42/international_results).\n- **72 scheduled WC 2026 group-stage fixtures** already present in the dataset.\n- **Polymarket** live winner markets (~$700M event volume).",
+                         "zh": "- **49,287 场男子国家队国际比赛**，自 1872 年以来（martj42/international_results）。\n- **72 场已排期的 WC 2026 小组赛**已包含在数据集中。\n- **Polymarket** 实时冠军市场（约 7 亿美元事件交易量）。",
+                         "es": "- **49.287 partidos internacionales masculinos** desde 1872 (martj42/international_results).\n- **72 partidos de fase de grupos de la WC 2026** ya en el dataset.\n- **Polymarket** mercados de ganador en vivo (~$700M de volumen).",
+                         "pt": "- **49.287 jogos internacionais masculinos** desde 1872 (martj42/international_results).\n- **72 jogos da fase de grupos da Copa 2026** já no dataset.\n- **Polymarket** mercados de vencedor ao vivo (~US$ 700M de volume).",
+                         "fr": "- **49 287 matchs internationaux masculins** depuis 1872 (martj42/international_results).\n- **72 matchs de phase de poules CM 2026** déjà dans le dataset.\n- **Polymarket** marchés de vainqueur en direct (~700 M$ de volume)."},
+    "method_h_model":   {"en": "Model", "zh": "模型",
+                         "es": "Modelo", "pt": "Modelo", "fr": "Modèle"},
+    "method_p_model":   {"en": "- **Dixon-Coles** bivariate Poisson with exponential time decay (xi ≈ 1-year half-life).\n- Fit on ~7K internationals since 2019 across 240 national teams.\n- Home advantage γ ≈ 0.21; low-score correlation ρ ≈ −0.10 (both standard for intl football).",
+                         "zh": "- **Dixon-Coles** 双变量泊松 + 指数时间衰减（xi ≈ 1 年半衰期）。\n- 在 2019 年以来约 7K 场国际比赛、240 支国家队上拟合。\n- 主场优势 γ ≈ 0.21；低比分相关 ρ ≈ −0.10（国际足球的标准范围）。",
+                         "es": "- **Dixon-Coles** Poisson bivariado con decaimiento exponencial (xi ≈ 1 año de vida media).\n- Ajustado sobre ~7K internacionales desde 2019 en 240 selecciones.\n- Ventaja de casa γ ≈ 0.21; correlación de bajo marcador ρ ≈ −0.10 (estándar en fútbol internacional).",
+                         "pt": "- **Dixon-Coles** Poisson bivariado com decaimento exponencial (xi ≈ 1 ano de meia-vida).\n- Ajustado em ~7K internacionais desde 2019 em 240 seleções.\n- Vantagem de casa γ ≈ 0.21; correlação de placar baixo ρ ≈ −0.10 (padrão no futebol internacional).",
+                         "fr": "- **Dixon-Coles** Poisson bivarié avec décroissance exponentielle (xi ≈ 1 an de demi-vie).\n- Ajusté sur ~7K internationaux depuis 2019 à travers 240 sélections.\n- Avantage à domicile γ ≈ 0.21 ; corrélation de petits scores ρ ≈ −0.10 (standard du football international)."},
+    "method_h_sim":     {"en": "Tournament Simulation", "zh": "赛事模拟",
+                         "es": "Simulación del Torneo", "pt": "Simulação do Torneio",
+                         "fr": "Simulation du Tournoi"},
+    "method_p_sim":     {"en": "- **10,000** Monte Carlo runs of the 48-team group stage + 32-team knockout bracket.\n- Group-stage tiebreakers: points → goal difference → goals scored → random.\n- Knockout draws resolved with 30-min extra-time (λ scaled 1/3) then a 50/50 shootout.",
+                         "zh": "- **10,000** 次蒙特卡洛模拟：48 队小组赛 + 32 队淘汰赛完整签表。\n- 小组赛平分规则：积分 → 净胜球 → 进球数 → 随机。\n- 淘汰赛平局 → 30 分钟加时（λ 缩放 1/3）→ 仍平 50/50 点球决胜。",
+                         "es": "- **10.000** simulaciones Monte Carlo de fase de grupos + eliminatorias completas.\n- Desempates de grupo: puntos → dif. goles → goles a favor → aleatorio.\n- Empates en KO: prórroga de 30 min (λ escalado 1/3) y luego penales 50/50.",
+                         "pt": "- **10.000** simulações Monte Carlo da fase de grupos + mata-mata completo.\n- Critérios de desempate: pontos → saldo → gols pró → aleatório.\n- Empates no mata-mata: prorrogação de 30 min (λ escalado 1/3) e depois pênaltis 50/50.",
+                         "fr": "- **10 000** simulations Monte Carlo : phase de poules + tableau à 32.\n- Départage de poules : points → différence → buts marqués → aléatoire.\n- Matchs nuls en KO : prolongation de 30 min (λ réduit à 1/3) puis tirs au but 50/50."},
+    "method_h_calib":   {"en": "Backtest & Calibration", "zh": "回测与校准",
+                         "es": "Backtest y Calibración", "pt": "Backtest e Calibração",
+                         "fr": "Backtest & Calibration"},
+    "method_p_calib":   {"en": "- Refit strictly on pre-tournament data, predict every match of **2018 & 2022 World Cups**.\n- **Brier skill score vs uniform: +7.0%** (2018: +10.8%, 2022: +3.1%).\n- Well-calibrated in the 20–50% probability range (where most predictions live).",
+                         "zh": "- 严格使用赛前数据重新拟合，预测 **2018 与 2022 世界杯**每一场。\n- **Brier 技巧分相对均匀基线：+7.0%**（2018 +10.8%，2022 +3.1%）。\n- 在 20–50% 概率区间校准良好（大部分预测落点）。",
+                         "es": "- Reajustado estrictamente con datos pre-torneo, predijo cada partido de las **Copas 2018 y 2022**.\n- **Brier skill vs uniforme: +7,0%** (2018 +10,8%, 2022 +3,1%).\n- Bien calibrado en el rango 20–50% (donde vive la mayoría de las predicciones).",
+                         "pt": "- Reajustado estritamente com dados pré-torneio, previu cada jogo das **Copas 2018 e 2022**.\n- **Brier skill vs uniforme: +7,0%** (2018 +10,8%, 2022 +3,1%).\n- Bem calibrado na faixa 20–50% (onde vive a maioria das previsões).",
+                         "fr": "- Réentraîné strictement avec les données avant-tournoi, a prédit chaque match des **CM 2018 & 2022**.\n- **Brier skill vs uniforme : +7,0%** (2018 +10,8%, 2022 +3,1%).\n- Bien calibré dans la plage 20–50% (où vit la plupart des prédictions)."},
+    "method_h_not":     {"en": "What This App Is *Not*", "zh": "这个 App *不是*什么",
+                         "es": "Lo que esta App *NO* es", "pt": "O que este App *NÃO* é",
+                         "fr": "Ce que cette App *n'est PAS*"},
+    "method_p_not":     {"en": "- Not a gambling recommendation.\n- Not a live in-game win-probability tool (pre-match only).\n- Not claiming the model is *right* and the market is *wrong* — just that they disagree by a measurable, data-backed amount.",
+                         "zh": "- 不是投注建议。\n- 不是比赛中实时胜率工具（只做赛前预测）。\n- 不是声称模型*对*、市场*错*——只是说两者分歧是可量化、有数据支撑的。",
+                         "es": "- No es una recomendación de apuesta.\n- No es una herramienta de probabilidad en vivo (solo pre-partido).\n- No afirma que el modelo esté *bien* y el mercado *mal* — sólo que difieren en una cantidad medible y respaldada por datos.",
+                         "pt": "- Não é uma recomendação de aposta.\n- Não é uma ferramenta de probabilidade ao vivo (apenas pré-jogo).\n- Não afirma que o modelo está *certo* e o mercado *errado* — apenas que divergem em uma quantidade mensurável, apoiada por dados.",
+                         "fr": "- Pas une recommandation de pari.\n- Pas un outil de probabilité en temps réel (uniquement avant-match).\n- Ne prétend pas que le modèle a *raison* et le marché *tort* — simplement que les deux divergent d'un écart mesurable et fondé sur les données."},
+}
+
+
+REASON_REGEX_SUBS: dict[str, list] = {
+    # Order matters: specific patterns first.
+    "_patterns": [
+        (r"(\d+)W (\d+)D (\d+)L last (\d+)",      "WDL"),
+        (r"goal diff ([+-]?)(\d+(?:\.\d+)?)/g",   "GD"),
+        (r"avg opp Elo (\d+)",                     "OPP"),
+        (r"model sees recent form the market isn't crediting\.",  "NARR_UNDER"),
+        (r"market may be anchoring on historical reputation\.",   "NARR_OVER"),
+    ],
+}
+
+
+def translate_reason(text: str) -> str:
+    """Translate an English reason string into the current language by pattern
+    substitution. Safe: returns input if lang==en or no patterns match."""
+    import re
+    lang = st.session_state.get("lang", "en")
+    if lang == "en" or not text:
+        return text
+    out = text
+    # WDL
+    def wdl_sub(m):
+        w, d, l, n = m.group(1), m.group(2), m.group(3), m.group(4)
+        if lang == "zh":
+            return f"{w}胜 {d}平 {l}负 最近 {n} 场"
+        if lang == "es":
+            return f"{w}G {d}E {l}P últ. {n}"
+        if lang == "pt":
+            return f"{w}V {d}E {l}D últ. {n}"
+        if lang == "fr":
+            return f"{w}V {d}N {l}D {n} derniers"
+        return m.group(0)
+    out = re.sub(r"(\d+)W (\d+)D (\d+)L last (\d+)", wdl_sub, out)
+    # Goal diff
+    def gd_sub(m):
+        sign, val = m.group(1), m.group(2)
+        if lang == "zh":
+            return f"净胜球 {sign}{val}/场"
+        if lang == "es":
+            return f"dif. goles {sign}{val}/p"
+        if lang == "pt":
+            return f"saldo {sign}{val}/j"
+        if lang == "fr":
+            return f"diff. buts {sign}{val}/m"
+        return m.group(0)
+    out = re.sub(r"goal diff ([+-]?)(\d+(?:\.\d+)?)/g", gd_sub, out)
+    # Opp elo
+    def opp_sub(m):
+        v = m.group(1)
+        if lang == "zh": return f"平均对手 Elo {v}"
+        if lang == "es": return f"Elo rival prom. {v}"
+        if lang == "pt": return f"Elo adv. médio {v}"
+        if lang == "fr": return f"Elo adv. moy. {v}"
+        return m.group(0)
+    out = re.sub(r"avg opp Elo (\d+)", opp_sub, out)
+    # Narratives
+    out = out.replace("model sees recent form the market isn't crediting.",
+                      T["reason_narr_under"].get(lang, T["reason_narr_under"]["en"]))
+    out = out.replace("market may be anchoring on historical reputation.",
+                      T["reason_narr_over"].get(lang, T["reason_narr_over"]["en"]))
+    return out
+
+
+def set_language_from_sidebar():
+    """Render a language picker in the sidebar. Stores choice in session_state."""
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "en"
+    lang_code = st.session_state["lang"]
+    picked = st.sidebar.selectbox(
+        T["language"][lang_code],
+        list(LANGUAGES.keys()),
+        index=list(LANGUAGES.keys()).index(lang_code),
+        format_func=lambda k: LANGUAGES[k],
+        key="_lang_picker",
+    )
+    if picked != lang_code:
+        st.session_state["lang"] = picked
+        st.rerun()
+
+
+def t(key: str, **kwargs) -> str:
+    """Translate a key using the current language. Falls back to English."""
+    lang = st.session_state.get("lang", "en")
+    row = T.get(key, {})
+    text = row.get(lang) or row.get("en") or key
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except Exception:
+            return text
+    return text

@@ -14,6 +14,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from i18n import t, set_language_from_sidebar, LANGUAGES, translate_reason  # noqa: E402
+
 
 HERE = Path(__file__).resolve().parent
 
@@ -409,27 +413,28 @@ def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
 
 
 # ---------- sidebar ----------
-st.sidebar.markdown("# ⚽ WorldCup26IQ")
-st.sidebar.caption("Dixon-Coles + Monte Carlo for the 2026 FIFA World Cup.")
-page = st.sidebar.radio(
-    "Navigate",
-    [
-        "🏠 Hero",
-        "🏆 Champion Probabilities",
-        "💸 Mispricing Leaderboard",
-        "🎲 What-If Simulator",
-        "📊 Stage Reach",
-        "📏 Calibration (Backtest)",
-        "📖 Methodology",
-    ],
-    index=0,
-)
+set_language_from_sidebar()
+st.sidebar.markdown(f"# {t('app_title')}")
+st.sidebar.caption(t("app_tagline"))
+PAGE_KEYS = [
+    ("hero",   t("nav_hero")),
+    ("champ",  t("nav_champ")),
+    ("misp",   t("nav_misp")),
+    ("whatif", t("nav_whatif")),
+    ("ask",    t("nav_ask")),
+    ("stage",  t("nav_stage")),
+    ("calib",  t("nav_calib")),
+    ("method", t("nav_method")),
+]
+page_labels = [lbl for _, lbl in PAGE_KEYS]
+page_label = st.sidebar.radio(t("navigate"), page_labels, index=0)
+page_id = dict(zip(page_labels, [k for k, _ in PAGE_KEYS]))[page_label]
 st.sidebar.markdown("---")
-st.sidebar.caption("49K internationals since 1872 · Polymarket live odds · 10K Monte Carlo runs.")
+st.sidebar.caption(t("sidebar_foot"))
 
 
 # ---------- HERO / landing ----------
-if page.startswith("🏠"):
+if page_id == "hero":
     lb = load_leaderboard()
     probs = load_probs()
     summary = load_backtest_summary()
@@ -440,21 +445,19 @@ if page.startswith("🏠"):
     best_under = lb[lb["direction"] == "UNDER"].iloc[0]
     best_over = lb[lb["direction"] == "OVER"].iloc[0]
 
-    headline = (
-        f"Polymarket is <b>{best_over['edge']*100:.0f}% wrong</b> about "
-        f"{flag(best_over['team'])} {best_over['team']}. "
-        f"And <b>{best_under['edge']*100:+.0f}% wrong</b> about "
-        f"{flag(best_under['team'])} {best_under['team']}."
-    )
+    headline_text = t("hero_wrong",
+                       over_pp=f"{best_over['edge']*100:+.0f}",
+                       over_flag=flag(best_over["team"]),
+                       over_team=best_over["team"],
+                       under_pp=f"{best_under['edge']*100:+.0f}",
+                       under_flag=flag(best_under["team"]),
+                       under_team=best_under["team"])
     st.markdown(
         f"""
         <div class="hero">
-          <h1>⚽ WorldCup26IQ</h1>
-          <p class="subtitle">{headline}</p>
-          <p class="subtitle" style="margin-top:8px;">
-            A Dixon-Coles bivariate Poisson model, 10,000 Monte Carlo tournament runs,
-            compared live against $700M in Polymarket winner markets.
-          </p>
+          <h1>{t('app_title')}</h1>
+          <p class="subtitle">{headline_text}</p>
+          <p class="subtitle" style="margin-top:8px;">{t('hero_intro')}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -464,24 +467,24 @@ if page.startswith("🏠"):
         f"""
         <div class="kpi-grid">
           <div class="kpi">
-            <div class="label">Biggest UNDER</div>
+            <div class="label">{t('kpi_biggest_under')}</div>
             <div class="value">{flag(best_under['team'])} {best_under['team']}</div>
-            <div class="delta up">{best_under['edge']*100:+.1f} pp · mkt {best_under['market_p_W']*100:.1f}% → model {best_under['p_W']*100:.1f}%</div>
+            <div class="delta up">{best_under['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_under['market_p_W']*100:.1f}", model=f"{best_under['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
-            <div class="label">Biggest OVER</div>
+            <div class="label">{t('kpi_biggest_over')}</div>
             <div class="value">{flag(best_over['team'])} {best_over['team']}</div>
-            <div class="delta down">{best_over['edge']*100:+.1f} pp · mkt {best_over['market_p_W']*100:.1f}% → model {best_over['p_W']*100:.1f}%</div>
+            <div class="delta down">{best_over['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_over['market_p_W']*100:.1f}", model=f"{best_over['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
-            <div class="label">Model Brier skill</div>
+            <div class="label">{t('kpi_brier')}</div>
             <div class="value">{skill*100:+.1f}%</div>
-            <div class="delta muted">vs uniform baseline on WC 2018 + 2022 (128 matches)</div>
+            <div class="delta muted">{t('kpi_brier_sub')}</div>
           </div>
           <div class="kpi">
-            <div class="label">Market coverage</div>
+            <div class="label">{t('kpi_coverage')}</div>
             <div class="value">{int(lb['team'].nunique())} / 48</div>
-            <div class="delta muted">≥ $500K Polymarket liquidity</div>
+            <div class="delta muted">{t('kpi_coverage_sub')}</div>
           </div>
         </div>
         """,
@@ -490,7 +493,7 @@ if page.startswith("🏠"):
 
     # Top 5 model champions
     top = probs.sort_values("p_W", ascending=False).head(5).reset_index(drop=True)
-    st.markdown('<div class="section-title">🏆 Model top-5 favourites</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{t("section_top5_fav")}</div>', unsafe_allow_html=True)
     cols = st.columns(5)
     for i, row in top.iterrows():
         with cols[i]:
@@ -499,19 +502,24 @@ if page.startswith("🏠"):
                 <div class="kpi">
                   <div class="label">#{i+1}</div>
                   <div class="value">{flag(row['team'])} {row['team']}</div>
-                  <div class="delta muted">{row['p_W']*100:.1f}% champion</div>
+                  <div class="delta muted">{row['p_W']*100:.1f}% {t('champion_suffix')}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
     # Mispricing top 5
-    st.markdown('<div class="section-title">💸 Top 5 mispricings (ranked by |edge| × √liquidity)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{t("section_top5_mis")}</div>', unsafe_allow_html=True)
     top_lb = lb.head(5)
-    rows_html = '<div class="mis-row header"><div>#</div><div>Team</div><div>Direction</div><div>Model</div><div>Market</div><div>Why</div></div>'
+    rows_html = (
+        f'<div class="mis-row header"><div>#</div>'
+        f'<div>{t("col_team")}</div><div>{t("col_direction")}</div>'
+        f'<div>{t("col_model")}</div><div>{t("col_market")}</div>'
+        f'<div>{t("col_reason")}</div></div>'
+    )
     for _, r in top_lb.iterrows():
         dir_class = "dir-under" if r["direction"] == "UNDER" else "dir-over"
-        dir_label = "⬆ UNDER" if r["direction"] == "UNDER" else "⬇ OVER"
+        dir_label = t("dir_under") if r["direction"] == "UNDER" else t("dir_over")
         edge_pp = f"{r['edge']*100:+.1f}pp"
         rows_html += (
             f'<div class="mis-row">'
@@ -520,7 +528,7 @@ if page.startswith("🏠"):
             f'<div class="{dir_class}">{dir_label} {edge_pp}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
-            f'<div class="reason">{r["reason"]}</div>'
+            f'<div class="reason">{translate_reason(r["reason"])}</div>'
             f"</div>"
         )
     st.markdown(rows_html, unsafe_allow_html=True)
@@ -530,14 +538,10 @@ if page.startswith("🏠"):
     c_left, c_right = st.columns([1.2, 1.8])
     with c_left:
         st.markdown(
-            '<div class="section-title" style="font-size:1.1rem;">📏 Model credibility</div>',
+            f'<div class="section-title" style="font-size:1.1rem;">{t("section_credibility")}</div>',
             unsafe_allow_html=True,
         )
-        st.caption(
-            f"Refit strictly pre-tournament, scored every match of 2018 + 2022 WCs. "
-            f"Brier skill vs uniform: **{skill*100:+.1f}%**. "
-            f"Calibration is strongest in the 20–50% range — where most predictions live."
-        )
+        st.caption(t("credibility_text", skill=skill * 100))
         mini = go.Figure()
         mini.add_shape(type="line", x0=0, y0=0, x1=1, y1=1,
                        line=dict(dash="dash", color="#94a3c5", width=1))
@@ -558,30 +562,21 @@ if page.startswith("🏠"):
         st.plotly_chart(mini, use_container_width=True)
     with c_right:
         st.markdown(
-            '<div class="section-title" style="font-size:1.1rem;">🧭 What makes this different</div>',
+            f'<div class="section-title" style="font-size:1.1rem;">{t("section_different")}</div>',
             unsafe_allow_html=True,
         )
         st.markdown(
-            """
-            - 🎯 **Model-backed, not user-input.** Every probability comes from a Dixon-Coles
-              fit on 7K internationals + 10K Monte Carlo runs — not random scenario picking.
-            - 💸 **Live vs Polymarket.** We rank every team by how wrong the market is,
-              weighted by market liquidity.
-            - 📏 **Backtested & honest.** +7.0% Brier skill vs a uniform baseline on
-              128 real WC matches (2018 + 2022).
-            - 🎲 **Interactive.** The *What-If* page re-runs the whole bracket conditional
-              on your picks — see probabilities shift in real time.
-            """
+            f"- {t('diff_1')}\n\n- {t('diff_2')}\n\n- {t('diff_3')}\n\n- {t('diff_4')}"
         )
-        st.caption("Use the sidebar to explore. ⏭️")
+        st.caption(t("explore_sidebar"))
 
 
 # ---------- Champion ----------
-elif page.startswith("🏆"):
+elif page_id == "champ":
     probs = load_probs()
-    st.markdown('<div class="section-title">🏆 Champion Probabilities</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{t("champ_title")}</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<p class="section-caption">From {len(probs)} teams across 10,000 Monte Carlo tournament runs.</p>',
+        f'<p class="section-caption">{t("champ_caption", n=len(probs))}</p>',
         unsafe_allow_html=True,
     )
 
@@ -592,11 +587,12 @@ elif page.startswith("🏆"):
         top.sort_values("p_W"),
         x="p_W", y="label", orientation="h",
         labels={"p_W": "P(Win)", "label": ""},
+        title=t("champ_chart"),
     )
     fig.update_traces(marker_color="#f7c948")
     fig.update_layout(
         height=620,
-        margin=dict(l=140, r=40, t=30, b=40),
+        margin=dict(l=140, r=40, t=60, b=40),
         paper_bgcolor="#0b1220",
         plot_bgcolor="#121c2e",
         font=dict(color="#e8edf7"),
@@ -604,7 +600,7 @@ elif page.startswith("🏆"):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("Full table (all 48 teams)"):
+    with st.expander(t("full_table")):
         show = probs.copy()
         show["team"] = show["team"].apply(with_flag)
         st.dataframe(
@@ -615,13 +611,12 @@ elif page.startswith("🏆"):
 
 
 # ---------- Mispricing Leaderboard ----------
-elif page.startswith("💸"):
+elif page_id == "misp":
     lb = load_leaderboard()
     edges = load_edges()
-    st.markdown('<div class="section-title">💸 Mispricing Leaderboard</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{t("misp_title")}</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<p class="section-caption">Ranked by mispricing score = |edge| × √(liquidity / $1M). '
-        f'Filtered to {len(lb)} markets with ≥$500K liquidity.</p>',
+        f'<p class="section-caption">{t("misp_caption", n=len(lb))}</p>',
         unsafe_allow_html=True,
     )
 
@@ -631,22 +626,29 @@ elif page.startswith("💸"):
     best_over = over.iloc[0] if len(over) else None
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Markets analysed", len(lb))
+    k1.metric(t("markets_analysed"), len(lb))
     if best_under is not None:
-        k2.metric(f"Biggest UNDER: {flag(best_under['team'])} {best_under['team']}",
+        k2.metric(f"{t('kpi_biggest_under')}: {flag(best_under['team'])} {best_under['team']}",
                   f"{best_under['edge']*100:+.1f} pp",
-                  f"mkt {best_under['market_p_W']*100:.1f}% → model {best_under['p_W']*100:.1f}%")
+                  t("kpi_mkt_model", mkt=f"{best_under['market_p_W']*100:.1f}", model=f"{best_under['p_W']*100:.1f}"))
     if best_over is not None:
-        k3.metric(f"Biggest OVER: {flag(best_over['team'])} {best_over['team']}",
+        k3.metric(f"{t('kpi_biggest_over')}: {flag(best_over['team'])} {best_over['team']}",
                   f"{best_over['edge']*100:+.1f} pp",
-                  f"mkt {best_over['market_p_W']*100:.1f}% → model {best_over['p_W']*100:.1f}%")
-    k4.metric("Total WC-2026 liquidity", f"${lb['liquidity'].sum()/1e6:.1f}M")
+                  t("kpi_mkt_model", mkt=f"{best_over['market_p_W']*100:.1f}", model=f"{best_over['p_W']*100:.1f}"))
+    k4.metric(t("total_liquidity"), f"${lb['liquidity'].sum()/1e6:.1f}M")
+
+    st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("misp_rank_head")}</div>', unsafe_allow_html=True)
 
     # Custom rows
-    rows_html = '<div class="mis-row header"><div>Rank</div><div>Team</div><div>Direction</div><div>Model</div><div>Market</div><div>Reason (last 20 internationals)</div></div>'
+    rows_html = (
+        f'<div class="mis-row header"><div>{t("col_rank")}</div><div>{t("col_team")}</div>'
+        f'<div>{t("col_direction")}</div><div>{t("col_model")}</div>'
+        f'<div>{t("col_market")}</div><div>{t("col_reason")}</div></div>'
+    )
     for _, r in lb.iterrows():
         dir_class = "dir-under" if r["direction"] == "UNDER" else "dir-over"
-        dir_label = f"⬆ UNDER {r['edge']*100:+.1f}pp" if r["direction"] == "UNDER" else f"⬇ OVER {r['edge']*100:+.1f}pp"
+        dir_word = t("dir_under") if r["direction"] == "UNDER" else t("dir_over")
+        dir_label = f"{dir_word} {r['edge']*100:+.1f}pp"
         rows_html += (
             f'<div class="mis-row">'
             f'<div class="rank">#{int(r["rank"])}</div>'
@@ -654,12 +656,12 @@ elif page.startswith("💸"):
             f'<div class="{dir_class}">{dir_label}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
-            f'<div class="reason">{r["reason"]}</div>'
+            f'<div class="reason">{translate_reason(r["reason"])}</div>'
             f"</div>"
         )
     st.markdown(rows_html, unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title" style="margin-top:24px;">Model vs Market — all 43 covered teams</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="margin-top:24px;">{t("scatter_title")}</div>', unsafe_allow_html=True)
     scat = edges[edges["market_covered"]].copy()
     fig = px.scatter(
         scat, x="market_p_W", y="p_W", text="team", size="liquidity",
@@ -683,13 +685,9 @@ elif page.startswith("💸"):
 
 
 # ---------- What-If ----------
-elif page.startswith("🎲"):
-    st.markdown('<div class="section-title">🎲 What-If Simulator</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="section-caption">Lock who advances from each group, then re-run Monte Carlo '
-        'tournaments conditional on your picks. See how champion probabilities shift in real time.</p>',
-        unsafe_allow_html=True,
-    )
+elif page_id == "whatif":
+    st.markdown(f'<div class="section-title">{t("whatif_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("whatif_caption")}</p>', unsafe_allow_html=True)
 
     fx = load_fixtures()
     groups = infer_groups(fx)
@@ -700,11 +698,9 @@ elif page.startswith("🎲"):
     if "wc26_locks" not in st.session_state:
         st.session_state["wc26_locks"] = {}
 
-    st.markdown('<div class="section-title" style="font-size:1.1rem;">Lock group outcomes</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("whatif_lock")}</div>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="section-caption" style="font-size:0.85rem;">'
-        'For each group, pick a winner and runner-up (or leave as "— auto —" to let the model decide).'
-        '</p>',
+        f'<p class="section-caption" style="font-size:0.85rem;">{t("whatif_pick_caption")}</p>',
         unsafe_allow_html=True,
     )
 
@@ -718,38 +714,38 @@ elif page.startswith("🎲"):
                 st.markdown(f"**{gkey}**")
                 for t in groups[gkey]:
                     st.caption(f"{flag(t)} {t}")
+                auto = t("whatif_auto")
                 w_key = f"lock_{gkey}_1st"
-                w = st.selectbox("Winner", ["— auto —"] + teams,
+                w = st.selectbox(t("whatif_winner"), [auto] + teams,
                                  key=w_key, label_visibility="collapsed",
-                                 format_func=lambda t: t if t == "— auto —" else f"🏆 {flag(t)} {t}")
-                r_options = ["— auto —"] + [t for t in teams if t != w]
+                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🏆 {flag(x)} {x}")
+                r_options = [auto] + [tm for tm in teams if tm != w]
                 r_key = f"lock_{gkey}_2nd"
-                # Reset runner if collides with winner
-                if st.session_state.get(r_key) == w and w != "— auto —":
-                    st.session_state[r_key] = "— auto —"
-                r = st.selectbox("Runner-up", r_options,
+                if st.session_state.get(r_key) == w and w != auto:
+                    st.session_state[r_key] = auto
+                r = st.selectbox(t("whatif_runner"), r_options,
                                  key=r_key, label_visibility="collapsed",
-                                 format_func=lambda t: t if t == "— auto —" else f"🥈 {flag(t)} {t}")
+                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🥈 {flag(x)} {x}")
                 lk = {}
-                if w != "— auto —":
+                if w != auto:
                     lk["1st"] = w
-                if r != "— auto —":
+                if r != auto:
                     lk["2nd"] = r
                 if lk:
                     new_locks[gkey] = lk
 
     st.markdown("---")
     c1, c2, c3 = st.columns([1, 1, 3])
-    n_sims = c1.selectbox("Simulations", [500, 1000, 2000, 5000], index=1)
-    run = c2.button("🎲 Simulate", type="primary", use_container_width=True)
-    if c3.button("Reset locks"):
+    n_sims = c1.selectbox(t("whatif_sims"), [500, 1000, 2000, 5000], index=1)
+    run = c2.button(t("whatif_run"), type="primary", use_container_width=True)
+    if c3.button(t("whatif_reset")):
         for k in list(st.session_state.keys()):
             if k.startswith("lock_"):
                 del st.session_state[k]
         st.rerun()
 
     if run:
-        with st.spinner(f"Running {n_sims} Monte Carlo tournaments…"):
+        with st.spinner(t("whatif_spinner", n=n_sims)):
             res = run_whatif(groups, fx, new_locks, n_sims=int(n_sims))
 
         # Compare to baseline
@@ -758,8 +754,7 @@ elif page.startswith("🎲"):
 
         n_locked = sum(len(v) for v in new_locks.values())
         st.markdown(
-            f'<div class="section-title" style="margin-top:12px;">Results — '
-            f'{n_locked} lock(s) × {n_sims} sims</div>',
+            f'<div class="section-title" style="margin-top:12px;">{t("whatif_results", n_locked=n_locked, n_sims=n_sims)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -768,11 +763,11 @@ elif page.startswith("🎲"):
         fig = go.Figure()
         fig.add_trace(go.Bar(
             y=top["label"], x=top["baseline_p_W"], orientation="h",
-            name="Baseline", marker_color="#94a3c5", opacity=0.6,
+            name=t("whatif_baseline"), marker_color="#94a3c5", opacity=0.6,
         ))
         fig.add_trace(go.Bar(
             y=top["label"], x=top["p_W"], orientation="h",
-            name="Conditional", marker_color="#f7c948",
+            name=t("whatif_conditional"), marker_color="#f7c948",
         ))
         fig.update_layout(
             barmode="overlay",
@@ -791,7 +786,7 @@ elif page.startswith("🎲"):
         shifts["abs_delta"] = shifts["delta"].abs()
         shifts = shifts.sort_values("abs_delta", ascending=False).head(10)
         st.markdown(
-            '<div class="section-title" style="font-size:1.1rem;">Biggest probability shifts vs baseline</div>',
+            f'<div class="section-title" style="font-size:1.1rem;">{t("whatif_shifts")}</div>',
             unsafe_allow_html=True,
         )
         view = shifts.copy()
@@ -804,20 +799,27 @@ elif page.startswith("🎲"):
             hide_index=True,
         )
     else:
-        st.info("👆 Configure your group-stage picks above, then click **Simulate**.")
+        st.info(t("whatif_hint"))
+
+
+# ---------- Ask the Model (placeholder — Challenge B) ----------
+elif page_id == "ask":
+    st.markdown(f'<div class="section-title">{t("ask_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("ask_caption")}</p>', unsafe_allow_html=True)
+    st.info("⚒️ Claude-powered natural language interface — Challenge B is under construction. Coming next.")
 
 
 # ---------- Stage Reach ----------
-elif page.startswith("📊"):
+elif page_id == "stage":
     probs = load_probs()
-    st.markdown('<div class="section-title">📊 Stage-Reach Probabilities</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{t("stage_title")}</div>', unsafe_allow_html=True)
     cols = ["p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]
     nice = ["R32", "R16", "QF", "SF", "Final", "Win"]
     teams = probs["team"].tolist()
     # Default to top-6 by champion prob
     default = probs.sort_values("p_W", ascending=False).head(6)["team"].tolist()
-    chosen = st.multiselect("Teams to compare", teams, default=default,
-                             format_func=lambda t: f"{flag(t)} {t}")
+    chosen = st.multiselect(t("stage_pick"), teams, default=default,
+                             format_func=lambda x: f"{flag(x)} {x}")
     if chosen:
         sub = probs[probs["team"].isin(chosen)].set_index("team")[cols]
         sub.columns = nice
@@ -840,16 +842,12 @@ elif page.startswith("📊"):
 
 
 # ---------- Calibration ----------
-elif page.startswith("📏"):
-    st.markdown('<div class="section-title">📏 Calibration — How Honest Is the Model?</div>', unsafe_allow_html=True)
+elif page_id == "calib":
+    st.markdown(f'<div class="section-title">{t("calib_title")}</div>', unsafe_allow_html=True)
     summary = load_backtest_summary()
     rel = load_backtest_reliability()
     preds = load_backtest_predictions()
-    st.markdown(
-        '<p class="section-caption">We refit strictly on pre-tournament data and scored every match of '
-        'the 2018 + 2022 World Cups. Brier skill score compares against a uniform (1/3) baseline.</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<p class="section-caption">{t("calib_caption")}</p>', unsafe_allow_html=True)
     all_dc = summary[(summary["year"] == "ALL") & (summary["model"] == "DixonColes")].iloc[0]
     all_base = summary[(summary["year"] == "ALL") & (summary["model"] == "Uniform(1/3)")].iloc[0]
     skill = 1 - all_dc["brier"] / all_base["brier"]
@@ -859,15 +857,12 @@ elif page.startswith("📏"):
     m3.metric("LogLoss (DC)", f"{all_dc['logloss']:.4f}")
     m4.metric("Brier skill vs uniform", f"{skill*100:+.1f}%")
 
-    st.markdown('<div class="section-title" style="margin-top:18px;">By tournament</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="margin-top:18px;">{t("by_tournament")}</div>', unsafe_allow_html=True)
     pivot = summary.pivot_table(index="year", columns="model", values=["brier", "logloss"])
     st.dataframe(pivot.style.format("{:.4f}"), use_container_width=True)
 
-    st.markdown('<div class="section-title" style="margin-top:18px;">Reliability Diagram (pooled predictions)</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="section-caption">Dots on the diagonal = perfectly calibrated. Dot size = predictions in bucket.</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="section-title" style="margin-top:18px;">{t("reliability_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("reliability_caption")}</p>', unsafe_allow_html=True)
     fig = go.Figure()
     fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dash", color="#94a3c5"))
     fig.add_trace(go.Scatter(
@@ -888,7 +883,7 @@ elif page.startswith("📏"):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander(f"All {len(preds)} backtest predictions"):
+    with st.expander(t("all_backtest", n=len(preds))):
         pv = preds.copy()
         pv["home"] = pv["home"].apply(with_flag)
         pv["away"] = pv["away"].apply(with_flag)
@@ -901,38 +896,11 @@ elif page.startswith("📏"):
 
 
 # ---------- Methodology ----------
-elif page.startswith("📖"):
-    st.markdown('<div class="section-title">📖 Methodology & Honesty</div>', unsafe_allow_html=True)
-    st.markdown(
-        """
-### The Question
-**Where does Polymarket misprice the 2026 FIFA World Cup — and why?**
-
-The 48-team / 32-team knockout format is brand new. Markets have weak historical priors — which is exactly where a model trained on competitive match data can add value.
-
-### Data
-- **49,287 men's international matches** since 1872 (martj42/international_results).
-- **72 scheduled WC 2026 group-stage fixtures** already present in the dataset.
-- **Polymarket** live winner markets (~$700M event volume).
-
-### Model
-- **Dixon-Coles** bivariate Poisson with exponential time decay (xi ≈ 1-year half-life).
-- Fit on ~7K internationals since 2019 across 240 national teams.
-- Home advantage γ ≈ 0.21; low-score correlation ρ ≈ −0.10 (both standard for intl football).
-
-### Tournament Simulation
-- **10,000** Monte Carlo runs of the 48-team group stage + 32-team knockout bracket.
-- Group-stage tiebreakers: points → goal difference → goals scored → random.
-- Knockout draws resolved with 30-min extra-time (λ scaled 1/3) then a 50/50 shootout.
-
-### Backtest & Calibration
-- Refit strictly on pre-tournament data, predict every match of **2018 & 2022 World Cups**.
-- **Brier skill score vs uniform: +7.0%** (2018: +10.8%, 2022: +3.1%).
-- Well-calibrated in the 20–50% probability range (where most predictions live).
-
-### What This App Is *Not*
-- Not a gambling recommendation.
-- Not a live in-game win-probability tool (pre-match only).
-- Not claiming the model is *right* and the market is *wrong* — just that they disagree by a measurable, data-backed amount.
-        """
-    )
+elif page_id == "method":
+    st.markdown(f'<div class="section-title">{t("method_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f"### {t('method_h_question')}\n\n{t('method_p_question')}")
+    st.markdown(f"### {t('method_h_data')}\n\n{t('method_p_data')}")
+    st.markdown(f"### {t('method_h_model')}\n\n{t('method_p_model')}")
+    st.markdown(f"### {t('method_h_sim')}\n\n{t('method_p_sim')}")
+    st.markdown(f"### {t('method_h_calib')}\n\n{t('method_p_calib')}")
+    st.markdown(f"### {t('method_h_not')}\n\n{t('method_p_not')}")
