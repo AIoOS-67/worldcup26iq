@@ -17,6 +17,7 @@ import streamlit as st
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from i18n import t, set_language_from_sidebar, LANGUAGES, translate_reason  # noqa: E402
+from ask_model import ask as ask_claude, build_data_context, EXAMPLE_QUESTIONS  # noqa: E402
 
 
 HERE = Path(__file__).resolve().parent
@@ -802,11 +803,58 @@ elif page_id == "whatif":
         st.info(t("whatif_hint"))
 
 
-# ---------- Ask the Model (placeholder — Challenge B) ----------
+# ---------- Ask the Model (Challenge B) ----------
 elif page_id == "ask":
     st.markdown(f'<div class="section-title">{t("ask_title")}</div>', unsafe_allow_html=True)
     st.markdown(f'<p class="section-caption">{t("ask_caption")}</p>', unsafe_allow_html=True)
-    st.info("⚒️ Claude-powered natural language interface — Challenge B is under construction. Coming next.")
+
+    lang = st.session_state.get("lang", "en")
+    probs = load_probs()
+    lb = load_leaderboard()
+    summary = load_backtest_summary()
+    data_context = build_data_context(probs, lb, summary)
+
+    if "ask_history" not in st.session_state:
+        st.session_state["ask_history"] = []
+
+    # Example prompts (clickable)
+    examples = EXAMPLE_QUESTIONS.get(lang, EXAMPLE_QUESTIONS["en"])
+    cols = st.columns(len(examples))
+    preset = None
+    for c, ex in zip(cols, examples):
+        if c.button(ex, use_container_width=True, key=f"ex_{ex[:20]}"):
+            preset = ex
+
+    # Input
+    q = st.text_area(
+        t("ask_placeholder"),
+        value=preset or "",
+        placeholder=t("ask_placeholder"),
+        height=80,
+        label_visibility="collapsed",
+        key="ask_input",
+    )
+    c1, c2 = st.columns([1, 6])
+    go = c1.button(t("ask_button"), type="primary", use_container_width=True)
+
+    if go and q.strip():
+        try:
+            with st.spinner(t("ask_thinking")):
+                answer = ask_claude(q, data_context, lang)
+            st.session_state["ask_history"].insert(0, {"q": q, "a": answer})
+        except RuntimeError as e:
+            if "NO_API_KEY" in str(e):
+                st.error(t("ask_no_api"))
+            else:
+                st.error(str(e))
+        except Exception as e:
+            st.error(f"Claude API error: {e}")
+
+    # Render history
+    for i, turn in enumerate(st.session_state["ask_history"][:6]):
+        st.markdown("---")
+        st.markdown(f"**🧑 {turn['q']}**")
+        st.markdown(f"🤖 {turn['a']}")
 
 
 # ---------- Stage Reach ----------
