@@ -183,6 +183,231 @@ def load_backtest_predictions() -> pd.DataFrame:
     return pd.read_parquet(_p("backtest_predictions.parquet"))
 
 
+@st.cache_data
+def load_dc_params():
+    p = pd.read_parquet(_p("dc_params.parquet"))
+    s = pd.read_parquet(_p("dc_scalars.parquet")).iloc[0]
+    teams = p["team"].tolist()
+    return {
+        "teams": teams,
+        "team_index": {t: i for i, t in enumerate(teams)},
+        "attack": p["attack"].to_numpy(),
+        "defense": p["defense"].to_numpy(),
+        "home_adv": float(s["home_adv"]),
+        "rho": float(s["rho"]),
+    }
+
+
+@st.cache_data
+def load_fixtures() -> pd.DataFrame:
+    return pd.read_parquet(_p("wc2026_fixtures.parquet"))
+
+
+# ---------- What-If simulator primitives ----------
+MAX_GOALS = 7
+N_STATES = (MAX_GOALS + 1) ** 2
+
+
+def _poisson_pmf(lam: float, n: int) -> np.ndarray:
+    p = np.empty(n + 1)
+    p[0] = np.exp(-lam)
+    for k in range(n):
+        p[k + 1] = p[k] * lam / (k + 1)
+    return p
+
+
+def _score_cdf(lam_h: float, lam_a: float, rho: float) -> np.ndarray:
+    ph = _poisson_pmf(lam_h, MAX_GOALS)
+    pa = _poisson_pmf(lam_a, MAX_GOALS)
+    mat = np.outer(ph, pa)
+    mat[0, 0] *= max(1 - lam_h * lam_a * rho, 1e-12)
+    mat[0, 1] *= max(1 + lam_h * rho, 1e-12)
+    mat[1, 0] *= max(1 + lam_a * rho, 1e-12)
+    mat[1, 1] *= max(1 - rho, 1e-12)
+    mat = mat / mat.sum()
+    return np.cumsum(mat.ravel())
+
+
+def _lambdas(dc, home, away, neutral):
+    i, j = dc["team_index"][home], dc["team_index"][away]
+    gamma = 0.0 if neutral else dc["home_adv"]
+    lam_h = float(np.exp(dc["attack"][i] + dc["defense"][j] + gamma))
+    lam_a = float(np.exp(dc["attack"][j] + dc["defense"][i]))
+    return lam_h, lam_a
+
+
+def _sample_from_cdf(cdf, u):
+    idx = int(np.searchsorted(cdf, u, side="right"))
+    if idx >= N_STATES:
+        idx = N_STATES - 1
+    return idx // (MAX_GOALS + 1), idx % (MAX_GOALS + 1)
+
+
+def _knockout_winner(dc, home, away, rng):
+    lam_h, lam_a = _lambdas(dc, home, away, True)
+    hg, ag = _sample_from_cdf(_score_cdf(lam_h, lam_a, dc["rho"]), rng.random())
+    if hg != ag:
+        return home if hg > ag else away
+    hg2, ag2 = _sample_from_cdf(_score_cdf(lam_h / 3.0, lam_a / 3.0, dc["rho"]), rng.random())
+    if hg2 != ag2:
+        return home if hg2 > ag2 else away
+    return home if rng.random() < 0.5 else away
+
+
+def infer_groups(fixtures: pd.DataFrame) -> dict:
+    from collections import defaultdict
+    adj = defaultdict(set)
+    for _, r in fixtures.iterrows():
+        adj[r["home_team"]].add(r["away_team"])
+        adj[r["away_team"]].add(r["home_team"])
+    groups, seen = [], set()
+    for team in adj:
+        if team in seen:
+            continue
+        stack, comp = [team], set()
+        while stack:
+            t = stack.pop()
+            if t in comp:
+                continue
+            comp.add(t)
+            for nb in adj[t]:
+                if nb not in comp:
+                    stack.append(nb)
+        seen |= comp
+        groups.append(sorted(comp))
+    groups.sort()
+    return {f"G{chr(ord('A') + i)}": g for i, g in enumerate(groups)}
+
+
+@st.cache_data
+def prepare_group_cdfs(_fixtures: pd.DataFrame, _dc_teams: tuple, _dc_attack_hash: float):
+    """Precompute CDF per group fixture (indep of which sim)."""
+    dc = load_dc_params()
+    teams_in_groups = {t for t in _dc_teams}
+    entries = []
+    for _, r in _fixtures.iterrows():
+        h, a = r["home_team"], r["away_team"]
+        if h not in dc["team_index"] or a not in dc["team_index"]:
+            continue
+        lam_h, lam_a = _lambdas(dc, h, a, bool(r["neutral"]))
+        entries.append((h, a, _score_cdf(lam_h, lam_a, dc["rho"])))
+    return entries
+
+
+def _group_from_team(groups: dict, team: str) -> str | None:
+    for g, ts in groups.items():
+        if team in ts:
+            return g
+    return None
+
+
+def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
+               n_sims: int, seed: int = 42) -> pd.DataFrame:
+    """locks: {group_key: {'1st': team, '2nd': team}} - force these positions."""
+    dc = load_dc_params()
+    rng = np.random.default_rng(seed)
+
+    cdfs = prepare_group_cdfs(fixtures, tuple(dc["teams"]), float(dc["attack"].sum()))
+    # Build list of (home, away, cdf, group_key) in fixture order
+    fx_rows = []
+    for h, a, cdf in cdfs:
+        gkey = _group_from_team(groups, h)
+        fx_rows.append((h, a, cdf, gkey))
+
+    STAGES = ["group", "R32", "R16", "QF", "SF", "F", "W"]
+    stage_rank = {s: i for i, s in enumerate(STAGES)}
+    team_to_group = {t: g for g, ts in groups.items() for t in ts}
+    all_teams = sorted(team_to_group)
+    counts = {t: [0] * len(STAGES) for t in all_teams}
+
+    for _sim in range(n_sims):
+        tables = {g: {t: {"pts": 0, "gf": 0, "ga": 0} for t in ts} for g, ts in groups.items()}
+        for h, a, cdf, gkey in fx_rows:
+            hg, ag = _sample_from_cdf(cdf, rng.random())
+            tables[gkey][h]["gf"] += hg; tables[gkey][h]["ga"] += ag
+            tables[gkey][a]["gf"] += ag; tables[gkey][a]["ga"] += hg
+            if hg > ag:
+                tables[gkey][h]["pts"] += 3
+            elif hg < ag:
+                tables[gkey][a]["pts"] += 3
+            else:
+                tables[gkey][h]["pts"] += 1
+                tables[gkey][a]["pts"] += 1
+
+        first_place, second_place, third_place = [], [], []
+        for gkey, tbl in tables.items():
+            ordered = sorted(
+                tbl.items(),
+                key=lambda kv: (kv[1]["pts"], kv[1]["gf"] - kv[1]["ga"], kv[1]["gf"], rng.random()),
+                reverse=True,
+            )
+            # Apply locks for this group
+            lk = locks.get(gkey, {})
+            ordered_teams = [t for t, _ in ordered]
+            # Reorder: locked 1st, locked 2nd, then remaining in natural order
+            final = [None, None]
+            remaining = list(ordered_teams)
+            if "1st" in lk:
+                final[0] = lk["1st"]
+                if lk["1st"] in remaining:
+                    remaining.remove(lk["1st"])
+            if "2nd" in lk:
+                final[1] = lk["2nd"]
+                if lk["2nd"] in remaining:
+                    remaining.remove(lk["2nd"])
+            # Fill unlocked slots with natural top of remaining
+            for pos in range(2):
+                if final[pos] is None:
+                    final[pos] = remaining.pop(0)
+            # 3rd and 4th from whatever's left, natural order
+            third = remaining[0] if remaining else None
+            fourth = remaining[1] if len(remaining) > 1 else None
+            first_place.append((gkey, final[0], tables[gkey][final[0]]))
+            second_place.append((gkey, final[1], tables[gkey][final[1]]))
+            if third:
+                third_place.append((gkey, third, tables[gkey][third]))
+
+        third_sorted = sorted(
+            third_place,
+            key=lambda t: (t[2]["pts"], t[2]["gf"] - t[2]["ga"], t[2]["gf"], rng.random()),
+            reverse=True,
+        )
+        third_adv = [t for (_, t, _) in third_sorted[:8]]
+
+        r32 = [t for (_, t, _) in first_place] + [t for (_, t, _) in second_place] + third_adv
+        reached = {t: "group" for t in all_teams}
+        for t in r32:
+            reached[t] = "R32"
+
+        def advance(teams, stage_out):
+            winners = []
+            n = len(teams)
+            for k in range(n // 2):
+                w = _knockout_winner(dc, teams[k], teams[n - 1 - k], rng)
+                winners.append(w)
+                reached[w] = stage_out
+            return winners
+
+        r16 = advance(r32, "R16")
+        qf = advance(r16, "QF")
+        sf = advance(qf, "SF")
+        final = advance(sf, "F")
+        advance(final, "W")
+
+        for team, stage in reached.items():
+            r = stage_rank[stage]
+            for s_idx in range(r + 1):
+                counts[team][s_idx] += 1
+
+    rows = []
+    for team in all_teams:
+        row = {"team": team}
+        for k, s in enumerate(STAGES):
+            row[f"p_{s}"] = counts[team][k] / n_sims
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values("p_W", ascending=False).reset_index(drop=True)
+
+
 # ---------- sidebar ----------
 st.sidebar.markdown("# ⚽ WorldCup26IQ")
 st.sidebar.caption("Dixon-Coles + Monte Carlo for the 2026 FIFA World Cup.")
@@ -192,6 +417,7 @@ page = st.sidebar.radio(
         "🏠 Hero",
         "🏆 Champion Probabilities",
         "💸 Mispricing Leaderboard",
+        "🎲 What-If Simulator",
         "📊 Stage Reach",
         "📏 Calibration (Backtest)",
         "📖 Methodology",
@@ -411,6 +637,131 @@ elif page.startswith("💸"):
         coloraxis_colorbar=dict(title="Edge"),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+# ---------- What-If ----------
+elif page.startswith("🎲"):
+    st.markdown('<div class="section-title">🎲 What-If Simulator</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="section-caption">Lock who advances from each group, then re-run Monte Carlo '
+        'tournaments conditional on your picks. See how champion probabilities shift in real time.</p>',
+        unsafe_allow_html=True,
+    )
+
+    fx = load_fixtures()
+    groups = infer_groups(fx)
+    dc = load_dc_params()
+    baseline_probs = load_probs().set_index("team")["p_W"].to_dict()
+
+    # Auto-init session state
+    if "wc26_locks" not in st.session_state:
+        st.session_state["wc26_locks"] = {}
+
+    st.markdown('<div class="section-title" style="font-size:1.1rem;">Lock group outcomes</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="section-caption" style="font-size:0.85rem;">'
+        'For each group, pick a winner and runner-up (or leave as "— auto —" to let the model decide).'
+        '</p>',
+        unsafe_allow_html=True,
+    )
+
+    group_keys = list(groups.keys())
+    new_locks = {}
+    for i in range(0, len(group_keys), 4):
+        cols = st.columns(4)
+        for j, gkey in enumerate(group_keys[i:i + 4]):
+            with cols[j]:
+                teams = [t for t in groups[gkey] if t in dc["team_index"]]
+                st.markdown(f"**{gkey}**")
+                for t in groups[gkey]:
+                    st.caption(f"{flag(t)} {t}")
+                w_key = f"lock_{gkey}_1st"
+                w = st.selectbox("Winner", ["— auto —"] + teams,
+                                 key=w_key, label_visibility="collapsed",
+                                 format_func=lambda t: t if t == "— auto —" else f"🏆 {flag(t)} {t}")
+                r_options = ["— auto —"] + [t for t in teams if t != w]
+                r_key = f"lock_{gkey}_2nd"
+                # Reset runner if collides with winner
+                if st.session_state.get(r_key) == w and w != "— auto —":
+                    st.session_state[r_key] = "— auto —"
+                r = st.selectbox("Runner-up", r_options,
+                                 key=r_key, label_visibility="collapsed",
+                                 format_func=lambda t: t if t == "— auto —" else f"🥈 {flag(t)} {t}")
+                lk = {}
+                if w != "— auto —":
+                    lk["1st"] = w
+                if r != "— auto —":
+                    lk["2nd"] = r
+                if lk:
+                    new_locks[gkey] = lk
+
+    st.markdown("---")
+    c1, c2, c3 = st.columns([1, 1, 3])
+    n_sims = c1.selectbox("Simulations", [500, 1000, 2000, 5000], index=1)
+    run = c2.button("🎲 Simulate", type="primary", use_container_width=True)
+    if c3.button("Reset locks"):
+        for k in list(st.session_state.keys()):
+            if k.startswith("lock_"):
+                del st.session_state[k]
+        st.rerun()
+
+    if run:
+        with st.spinner(f"Running {n_sims} Monte Carlo tournaments…"):
+            res = run_whatif(groups, fx, new_locks, n_sims=int(n_sims))
+
+        # Compare to baseline
+        res["baseline_p_W"] = res["team"].map(baseline_probs).fillna(0.0)
+        res["delta"] = res["p_W"] - res["baseline_p_W"]
+
+        n_locked = sum(len(v) for v in new_locks.values())
+        st.markdown(
+            f'<div class="section-title" style="margin-top:12px;">Results — '
+            f'{n_locked} lock(s) × {n_sims} sims</div>',
+            unsafe_allow_html=True,
+        )
+
+        top = res.head(15).copy()
+        top["label"] = top["team"].apply(with_flag)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=top["label"], x=top["baseline_p_W"], orientation="h",
+            name="Baseline", marker_color="#94a3c5", opacity=0.6,
+        ))
+        fig.add_trace(go.Bar(
+            y=top["label"], x=top["p_W"], orientation="h",
+            name="Conditional", marker_color="#f7c948",
+        ))
+        fig.update_layout(
+            barmode="overlay",
+            height=520,
+            margin=dict(l=140, r=40, t=20, b=40),
+            paper_bgcolor="#0b1220", plot_bgcolor="#121c2e",
+            font=dict(color="#e8edf7"),
+            xaxis=dict(title="P(Win)", gridcolor="#1b2742", tickformat=".0%"),
+            yaxis=dict(autorange="reversed"),
+            legend=dict(bgcolor="rgba(0,0,0,0)"),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Biggest shifts
+        shifts = res.copy()
+        shifts["abs_delta"] = shifts["delta"].abs()
+        shifts = shifts.sort_values("abs_delta", ascending=False).head(10)
+        st.markdown(
+            '<div class="section-title" style="font-size:1.1rem;">Biggest probability shifts vs baseline</div>',
+            unsafe_allow_html=True,
+        )
+        view = shifts.copy()
+        view["team"] = view["team"].apply(with_flag)
+        st.dataframe(
+            view[["team", "baseline_p_W", "p_W", "delta"]].style.format({
+                "baseline_p_W": "{:.1%}", "p_W": "{:.1%}", "delta": "{:+.1%}"
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("👆 Configure your group-stage picks above, then click **Simulate**.")
 
 
 # ---------- Stage Reach ----------
