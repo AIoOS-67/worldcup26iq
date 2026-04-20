@@ -13,6 +13,80 @@ LANGUAGES = {
 }
 
 
+# Team name translations. Keys are English canonical names matching our data.
+TEAMS: dict[str, dict[str, str]] = {
+    "Algeria":               {"zh": "阿尔及利亚", "es": "Argelia",      "pt": "Argélia",      "fr": "Algérie"},
+    "Argentina":             {"zh": "阿根廷",     "es": "Argentina",    "pt": "Argentina",    "fr": "Argentine"},
+    "Australia":             {"zh": "澳大利亚",   "es": "Australia",    "pt": "Austrália",    "fr": "Australie"},
+    "Austria":               {"zh": "奥地利",     "es": "Austria",      "pt": "Áustria",      "fr": "Autriche"},
+    "Belgium":               {"zh": "比利时",     "es": "Bélgica",      "pt": "Bélgica",      "fr": "Belgique"},
+    "Bosnia and Herzegovina":{"zh": "波黑",       "es": "Bosnia",       "pt": "Bósnia",       "fr": "Bosnie"},
+    "Brazil":                {"zh": "巴西",       "es": "Brasil",       "pt": "Brasil",       "fr": "Brésil"},
+    "Canada":                {"zh": "加拿大",     "es": "Canadá",       "pt": "Canadá",       "fr": "Canada"},
+    "Cape Verde":            {"zh": "佛得角",     "es": "Cabo Verde",   "pt": "Cabo Verde",   "fr": "Cap-Vert"},
+    "Colombia":              {"zh": "哥伦比亚",   "es": "Colombia",     "pt": "Colômbia",     "fr": "Colombie"},
+    "Croatia":               {"zh": "克罗地亚",   "es": "Croacia",      "pt": "Croácia",      "fr": "Croatie"},
+    "Curaçao":               {"zh": "库拉索",     "es": "Curazao",      "pt": "Curaçao",      "fr": "Curaçao"},
+    "Curacao":               {"zh": "库拉索",     "es": "Curazao",      "pt": "Curaçao",      "fr": "Curaçao"},
+    "Czech Republic":        {"zh": "捷克",       "es": "Chequia",      "pt": "Tchéquia",     "fr": "Tchéquie"},
+    "DR Congo":              {"zh": "刚果(金)",   "es": "RD Congo",     "pt": "RD Congo",     "fr": "RD Congo"},
+    "Ecuador":               {"zh": "厄瓜多尔",   "es": "Ecuador",      "pt": "Equador",      "fr": "Équateur"},
+    "Egypt":                 {"zh": "埃及",       "es": "Egipto",       "pt": "Egito",        "fr": "Égypte"},
+    "England":               {"zh": "英格兰",     "es": "Inglaterra",   "pt": "Inglaterra",   "fr": "Angleterre"},
+    "France":                {"zh": "法国",       "es": "Francia",      "pt": "França",       "fr": "France"},
+    "Germany":               {"zh": "德国",       "es": "Alemania",     "pt": "Alemanha",     "fr": "Allemagne"},
+    "Ghana":                 {"zh": "加纳",       "es": "Ghana",        "pt": "Gana",         "fr": "Ghana"},
+    "Haiti":                 {"zh": "海地",       "es": "Haití",        "pt": "Haiti",        "fr": "Haïti"},
+    "Iran":                  {"zh": "伊朗",       "es": "Irán",         "pt": "Irã",          "fr": "Iran"},
+    "Iraq":                  {"zh": "伊拉克",     "es": "Irak",         "pt": "Iraque",       "fr": "Irak"},
+    "Ivory Coast":           {"zh": "科特迪瓦",   "es": "Costa de Marfil","pt": "Costa do Marfim","fr": "Côte d'Ivoire"},
+    "Japan":                 {"zh": "日本",       "es": "Japón",        "pt": "Japão",        "fr": "Japon"},
+    "Jordan":                {"zh": "约旦",       "es": "Jordania",     "pt": "Jordânia",     "fr": "Jordanie"},
+    "Mexico":                {"zh": "墨西哥",     "es": "México",       "pt": "México",       "fr": "Mexique"},
+    "Morocco":               {"zh": "摩洛哥",     "es": "Marruecos",    "pt": "Marrocos",     "fr": "Maroc"},
+    "Netherlands":           {"zh": "荷兰",       "es": "Países Bajos", "pt": "Países Baixos","fr": "Pays-Bas"},
+    "New Zealand":           {"zh": "新西兰",     "es": "Nueva Zelanda","pt": "Nova Zelândia","fr": "Nouvelle-Zélande"},
+    "Norway":                {"zh": "挪威",       "es": "Noruega",      "pt": "Noruega",      "fr": "Norvège"},
+    "Panama":                {"zh": "巴拿马",     "es": "Panamá",       "pt": "Panamá",       "fr": "Panama"},
+    "Paraguay":              {"zh": "巴拉圭",     "es": "Paraguay",     "pt": "Paraguai",     "fr": "Paraguay"},
+    "Portugal":              {"zh": "葡萄牙",     "es": "Portugal",     "pt": "Portugal",     "fr": "Portugal"},
+    "Qatar":                 {"zh": "卡塔尔",     "es": "Catar",        "pt": "Catar",        "fr": "Qatar"},
+    "Saudi Arabia":          {"zh": "沙特阿拉伯", "es": "Arabia Saudí", "pt": "Arábia Saudita","fr": "Arabie saoudite"},
+    "Scotland":              {"zh": "苏格兰",     "es": "Escocia",      "pt": "Escócia",      "fr": "Écosse"},
+    "Senegal":               {"zh": "塞内加尔",   "es": "Senegal",      "pt": "Senegal",      "fr": "Sénégal"},
+    "South Africa":          {"zh": "南非",       "es": "Sudáfrica",    "pt": "África do Sul","fr": "Afrique du Sud"},
+    "South Korea":           {"zh": "韩国",       "es": "Corea del Sur","pt": "Coreia do Sul","fr": "Corée du Sud"},
+    "Spain":                 {"zh": "西班牙",     "es": "España",       "pt": "Espanha",      "fr": "Espagne"},
+    "Sweden":                {"zh": "瑞典",       "es": "Suecia",       "pt": "Suécia",       "fr": "Suède"},
+    "Switzerland":           {"zh": "瑞士",       "es": "Suiza",        "pt": "Suíça",        "fr": "Suisse"},
+    "Tunisia":               {"zh": "突尼斯",     "es": "Túnez",        "pt": "Tunísia",      "fr": "Tunisie"},
+    "Turkey":                {"zh": "土耳其",     "es": "Turquía",      "pt": "Turquia",      "fr": "Turquie"},
+    "United States":         {"zh": "美国",       "es": "Estados Unidos","pt": "Estados Unidos","fr": "États-Unis"},
+    "Uruguay":               {"zh": "乌拉圭",     "es": "Uruguay",      "pt": "Uruguai",      "fr": "Uruguay"},
+    "Uzbekistan":            {"zh": "乌兹别克斯坦","es": "Uzbekistán",  "pt": "Uzbequistão",  "fr": "Ouzbékistan"},
+    # Historical opponents that may appear in reason text / examples
+    "Italy":                 {"zh": "意大利",     "es": "Italia",       "pt": "Itália",       "fr": "Italie"},
+    "Poland":                {"zh": "波兰",       "es": "Polonia",      "pt": "Polônia",      "fr": "Pologne"},
+    "Denmark":               {"zh": "丹麦",       "es": "Dinamarca",    "pt": "Dinamarca",    "fr": "Danemark"},
+    "Serbia":                {"zh": "塞尔维亚",   "es": "Serbia",       "pt": "Sérvia",       "fr": "Serbie"},
+    "Chile":                 {"zh": "智利",       "es": "Chile",        "pt": "Chile",        "fr": "Chili"},
+    "Peru":                  {"zh": "秘鲁",       "es": "Perú",         "pt": "Peru",         "fr": "Pérou"},
+    "Nigeria":               {"zh": "尼日利亚",   "es": "Nigeria",      "pt": "Nigéria",      "fr": "Nigeria"},
+    "Cameroon":              {"zh": "喀麦隆",     "es": "Camerún",      "pt": "Camarões",     "fr": "Cameroun"},
+}
+
+
+def team_name(english: str) -> str:
+    """Return the team name in the current language, falling back to English."""
+    lang = st.session_state.get("lang", "en")
+    if lang == "en":
+        return english
+    row = TEAMS.get(english)
+    if not row:
+        return english
+    return row.get(lang, english)
+
+
 T: dict[str, dict[str, str]] = {
     # ---------- sidebar ----------
     "app_title":    {"en": "⚽ WorldCup26IQ",

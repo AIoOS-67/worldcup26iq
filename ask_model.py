@@ -93,15 +93,53 @@ You are WorldCup26IQ's analyst. Your job is to answer questions about the 2026 F
 # Rules
 - Answer in {lang_name}. Keep it under 180 words unless the user asks for detail.
 - Ground every probability claim in the provided data. Cite the relevant number.
-- If the user asks a what-if or conditional question (e.g., "what if Saudi Arabia wins Group F"), explain what the model currently says AND tell them the What-If page lets them simulate it live.
+- When mentioning a team, use the localized name from the TEAM NAME TABLE below (not the English name), and prefix with the flag emoji. Example in {lang_name}: "{example_team}".
+- If the user asks a what-if or conditional question, explain what the model currently says AND tell them the What-If page lets them simulate it live.
 - If the user asks about a team not in the data, say so.
-- When you mention a team, prefix with its flag emoji if obvious (e.g., 🇦🇷 Argentina, 🇫🇷 France, 🇧🇷 Brazil, 🇪🇸 Spain, 🇬🇧 England, 🇵🇹 Portugal, 🇨🇴 Colombia, 🇪🇨 Ecuador, 🇯🇵 Japan, 🇲🇦 Morocco, 🇺🇾 Uruguay, 🇵🇾 Paraguay, 🇩🇪 Germany, 🇳🇱 Netherlands, 🇲🇽 Mexico, 🇺🇸 United States, 🇨🇦 Canada, 🇸🇦 Saudi Arabia, 🇸🇳 Senegal, 🇦🇺 Australia, 🇳🇴 Norway, 🇨🇭 Switzerland, 🇩🇿 Algeria, 🇭🇷 Croatia).
 - Be specific: if the user asks about a "sleeper", name 2-3 teams with evidence from the data.
 - Prefer insights over generic prose. "Argentina is 17pp undervalued vs Polymarket" beats "Argentina looks strong."
+
+# TEAM NAME TABLE ({lang_name})
+{team_table}
 
 # DATA
 {context}
 """
+
+FLAGS_ASCII = {
+    "Argentina": "🇦🇷", "Brazil": "🇧🇷", "France": "🇫🇷", "Spain": "🇪🇸",
+    "Colombia": "🇨🇴", "Ecuador": "🇪🇨", "Morocco": "🇲🇦", "Japan": "🇯🇵",
+    "Paraguay": "🇵🇾", "Uruguay": "🇺🇾", "Portugal": "🇵🇹", "Germany": "🇩🇪",
+    "Netherlands": "🇳🇱", "Mexico": "🇲🇽", "United States": "🇺🇸", "Canada": "🇨🇦",
+    "Saudi Arabia": "🇸🇦", "Senegal": "🇸🇳", "Australia": "🇦🇺", "Norway": "🇳🇴",
+    "Switzerland": "🇨🇭", "Algeria": "🇩🇿", "Croatia": "🇭🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Iran": "🇮🇷", "Ghana": "🇬🇭", "South Korea": "🇰🇷", "Ivory Coast": "🇨🇮",
+    "DR Congo": "🇨🇩", "Cape Verde": "🇨🇻", "Tunisia": "🇹🇳", "Egypt": "🇪🇬",
+    "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "Sweden": "🇸🇪", "Belgium": "🇧🇪", "Austria": "🇦🇹",
+}
+
+
+def _team_table_for_lang(lang: str) -> str:
+    """Build a compact team translation table for the system prompt."""
+    if lang == "en":
+        return "(no translation needed)"
+    # Late import to avoid circulars
+    from i18n import TEAMS
+    lines = []
+    for english, variants in TEAMS.items():
+        local = variants.get(lang, english)
+        emoji = FLAGS_ASCII.get(english, "🏳️")
+        lines.append(f"  {english} → {emoji} {local}")
+    return "\n".join(lines)
+
+
+EXAMPLE_TEAM = {
+    "en": "🇦🇷 Argentina",
+    "zh": "🇦🇷 阿根廷",
+    "es": "🇦🇷 Argentina",
+    "pt": "🇦🇷 Argentina",
+    "fr": "🇦🇷 Argentine",
+}
 
 
 def ask(question: str, context: str, lang: str) -> str:
@@ -113,6 +151,8 @@ def ask(question: str, context: str, lang: str) -> str:
     system = SYSTEM_PROMPT_TEMPLATE.format(
         lang_name=LANG_NAME.get(lang, "English"),
         context=context,
+        team_table=_team_table_for_lang(lang),
+        example_team=EXAMPLE_TEAM.get(lang, EXAMPLE_TEAM["en"]),
     )
     resp = client.messages.create(
         model=MODEL,

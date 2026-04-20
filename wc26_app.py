@@ -16,8 +16,13 @@ import streamlit as st
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from i18n import t, set_language_from_sidebar, LANGUAGES, translate_reason  # noqa: E402
+from i18n import t, set_language_from_sidebar, LANGUAGES, translate_reason, team_name, TEAMS  # noqa: E402
 from ask_model import ask as ask_claude, build_data_context, EXAMPLE_QUESTIONS  # noqa: E402
+
+
+def team_with_flag(english: str) -> str:
+    """Localized team name prefixed with its flag emoji."""
+    return f"{flag(english)} {team_name(english)}"
 
 
 HERE = Path(__file__).resolve().parent
@@ -449,10 +454,10 @@ if page_id == "hero":
     headline_text = t("hero_wrong",
                        over_pp=f"{best_over['edge']*100:+.0f}",
                        over_flag=flag(best_over["team"]),
-                       over_team=best_over["team"],
+                       over_team=team_name(best_over["team"]),
                        under_pp=f"{best_under['edge']*100:+.0f}",
                        under_flag=flag(best_under["team"]),
-                       under_team=best_under["team"])
+                       under_team=team_name(best_under["team"]))
     st.markdown(
         f"""
         <div class="hero">
@@ -469,12 +474,12 @@ if page_id == "hero":
         <div class="kpi-grid">
           <div class="kpi">
             <div class="label">{t('kpi_biggest_under')}</div>
-            <div class="value">{flag(best_under['team'])} {best_under['team']}</div>
+            <div class="value">{team_with_flag(best_under['team'])}</div>
             <div class="delta up">{best_under['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_under['market_p_W']*100:.1f}", model=f"{best_under['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
             <div class="label">{t('kpi_biggest_over')}</div>
-            <div class="value">{flag(best_over['team'])} {best_over['team']}</div>
+            <div class="value">{team_with_flag(best_over['team'])}</div>
             <div class="delta down">{best_over['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_over['market_p_W']*100:.1f}", model=f"{best_over['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
@@ -502,7 +507,7 @@ if page_id == "hero":
                 f"""
                 <div class="kpi">
                   <div class="label">#{i+1}</div>
-                  <div class="value">{flag(row['team'])} {row['team']}</div>
+                  <div class="value">{team_with_flag(row['team'])}</div>
                   <div class="delta muted">{row['p_W']*100:.1f}% {t('champion_suffix')}</div>
                 </div>
                 """,
@@ -525,7 +530,7 @@ if page_id == "hero":
         rows_html += (
             f'<div class="mis-row">'
             f'<div class="rank">#{int(r["rank"])}</div>'
-            f'<div class="team">{flag(r["team"])} {r["team"]}</div>'
+            f'<div class="team">{team_with_flag(r["team"])}</div>'
             f'<div class="{dir_class}">{dir_label} {edge_pp}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
@@ -582,7 +587,7 @@ elif page_id == "champ":
     )
 
     top = probs.sort_values("p_W", ascending=False).head(20).copy()
-    top["label"] = top["team"].apply(with_flag)
+    top["label"] = top["team"].apply(team_with_flag)
 
     fig = px.bar(
         top.sort_values("p_W"),
@@ -603,7 +608,7 @@ elif page_id == "champ":
 
     with st.expander(t("full_table")):
         show = probs.copy()
-        show["team"] = show["team"].apply(with_flag)
+        show["team"] = show["team"].apply(team_with_flag)
         st.dataframe(
             show[["team", "p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]]
             .style.format({c: "{:.1%}" for c in ["p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]}),
@@ -629,11 +634,11 @@ elif page_id == "misp":
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(t("markets_analysed"), len(lb))
     if best_under is not None:
-        k2.metric(f"{t('kpi_biggest_under')}: {flag(best_under['team'])} {best_under['team']}",
+        k2.metric(f"{t('kpi_biggest_under')}: {team_with_flag(best_under['team'])}",
                   f"{best_under['edge']*100:+.1f} pp",
                   t("kpi_mkt_model", mkt=f"{best_under['market_p_W']*100:.1f}", model=f"{best_under['p_W']*100:.1f}"))
     if best_over is not None:
-        k3.metric(f"{t('kpi_biggest_over')}: {flag(best_over['team'])} {best_over['team']}",
+        k3.metric(f"{t('kpi_biggest_over')}: {team_with_flag(best_over['team'])}",
                   f"{best_over['edge']*100:+.1f} pp",
                   t("kpi_mkt_model", mkt=f"{best_over['market_p_W']*100:.1f}", model=f"{best_over['p_W']*100:.1f}"))
     k4.metric(t("total_liquidity"), f"${lb['liquidity'].sum()/1e6:.1f}M")
@@ -653,7 +658,7 @@ elif page_id == "misp":
         rows_html += (
             f'<div class="mis-row">'
             f'<div class="rank">#{int(r["rank"])}</div>'
-            f'<div class="team">{flag(r["team"])} {r["team"]}</div>'
+            f'<div class="team">{team_with_flag(r["team"])}</div>'
             f'<div class="{dir_class}">{dir_label}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
@@ -711,22 +716,22 @@ elif page_id == "whatif":
         cols = st.columns(4)
         for j, gkey in enumerate(group_keys[i:i + 4]):
             with cols[j]:
-                teams = [t for t in groups[gkey] if t in dc["team_index"]]
+                teams = [tm for tm in groups[gkey] if tm in dc["team_index"]]
                 st.markdown(f"**{gkey}**")
-                for t in groups[gkey]:
-                    st.caption(f"{flag(t)} {t}")
+                for tm in groups[gkey]:
+                    st.caption(f"{flag(tm)} {team_name(tm)}")
                 auto = t("whatif_auto")
                 w_key = f"lock_{gkey}_1st"
                 w = st.selectbox(t("whatif_winner"), [auto] + teams,
                                  key=w_key, label_visibility="collapsed",
-                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🏆 {flag(x)} {x}")
+                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🏆 {flag(x)} {team_name(x)}")
                 r_options = [auto] + [tm for tm in teams if tm != w]
                 r_key = f"lock_{gkey}_2nd"
                 if st.session_state.get(r_key) == w and w != auto:
                     st.session_state[r_key] = auto
                 r = st.selectbox(t("whatif_runner"), r_options,
                                  key=r_key, label_visibility="collapsed",
-                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🥈 {flag(x)} {x}")
+                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🥈 {flag(x)} {team_name(x)}")
                 lk = {}
                 if w != auto:
                     lk["1st"] = w
@@ -760,7 +765,7 @@ elif page_id == "whatif":
         )
 
         top = res.head(15).copy()
-        top["label"] = top["team"].apply(with_flag)
+        top["label"] = top["team"].apply(team_with_flag)
         fig = go.Figure()
         fig.add_trace(go.Bar(
             y=top["label"], x=top["baseline_p_W"], orientation="h",
@@ -791,7 +796,7 @@ elif page_id == "whatif":
             unsafe_allow_html=True,
         )
         view = shifts.copy()
-        view["team"] = view["team"].apply(with_flag)
+        view["team"] = view["team"].apply(team_with_flag)
         st.dataframe(
             view[["team", "baseline_p_W", "p_W", "delta"]].style.format({
                 "baseline_p_W": "{:.1%}", "p_W": "{:.1%}", "delta": "{:+.1%}"
@@ -867,12 +872,12 @@ elif page_id == "stage":
     # Default to top-6 by champion prob
     default = probs.sort_values("p_W", ascending=False).head(6)["team"].tolist()
     chosen = st.multiselect(t("stage_pick"), teams, default=default,
-                             format_func=lambda x: f"{flag(x)} {x}")
+                             format_func=team_with_flag)
     if chosen:
         sub = probs[probs["team"].isin(chosen)].set_index("team")[cols]
         sub.columns = nice
         long = sub.reset_index().melt(id_vars="team", var_name="Stage", value_name="P(reach)")
-        long["team"] = long["team"].apply(with_flag)
+        long["team"] = long["team"].apply(team_with_flag)
         fig = px.line(
             long, x="Stage", y="P(reach)", color="team", markers=True,
             category_orders={"Stage": nice},
@@ -933,8 +938,8 @@ elif page_id == "calib":
 
     with st.expander(t("all_backtest", n=len(preds))):
         pv = preds.copy()
-        pv["home"] = pv["home"].apply(with_flag)
-        pv["away"] = pv["away"].apply(with_flag)
+        pv["home"] = pv["home"].apply(team_with_flag)
+        pv["away"] = pv["away"].apply(team_with_flag)
         st.dataframe(
             pv[["year", "date", "home", "away", "home_goals", "away_goals",
                 "p_home", "p_draw", "p_away", "actual"]]
