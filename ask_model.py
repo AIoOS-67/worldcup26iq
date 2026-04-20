@@ -13,9 +13,22 @@ it via App settings → Secrets.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+# Load .env if present (local dev). Streamlit Cloud uses st.secrets instead.
+try:
+    from dotenv import load_dotenv
+    # Look for .env next to this file, and in the project root one level up.
+    here = Path(__file__).resolve().parent
+    for candidate in (here / ".env", here.parent / ".env"):
+        if candidate.exists():
+            load_dotenv(candidate)
+            break
+except ImportError:
+    pass
 
 MODEL = "claude-opus-4-7"
 MAX_TOKENS = 1200
