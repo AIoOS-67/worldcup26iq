@@ -525,12 +525,55 @@ if page.startswith("🏠"):
         )
     st.markdown(rows_html, unsafe_allow_html=True)
 
-    st.markdown(
-        '<p class="section-caption" style="margin-top:18px;">'
-        "Use the sidebar to explore the full model, calibration evidence, or the live market gap."
-        "</p>",
-        unsafe_allow_html=True,
-    )
+    # Small reliability + quick-explain row
+    rel = load_backtest_reliability()
+    c_left, c_right = st.columns([1.2, 1.8])
+    with c_left:
+        st.markdown(
+            '<div class="section-title" style="font-size:1.1rem;">📏 Model credibility</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Refit strictly pre-tournament, scored every match of 2018 + 2022 WCs. "
+            f"Brier skill vs uniform: **{skill*100:+.1f}%**. "
+            f"Calibration is strongest in the 20–50% range — where most predictions live."
+        )
+        mini = go.Figure()
+        mini.add_shape(type="line", x0=0, y0=0, x1=1, y1=1,
+                       line=dict(dash="dash", color="#94a3c5", width=1))
+        mini.add_trace(go.Scatter(
+            x=rel["avg_predicted"], y=rel["empirical"],
+            mode="markers",
+            marker=dict(size=np.sqrt(rel["count"]) * 4 + 5, color="#f7c948",
+                        line=dict(color="#0b1220", width=1)),
+            showlegend=False,
+        ))
+        mini.update_layout(
+            height=260, margin=dict(l=30, r=20, t=10, b=30),
+            paper_bgcolor="#0b1220", plot_bgcolor="#121c2e",
+            font=dict(color="#e8edf7", size=10),
+            xaxis=dict(title="Predicted", range=[0, 1], gridcolor="#1b2742", tickformat=".0%"),
+            yaxis=dict(title="Actual", range=[0, 1], gridcolor="#1b2742", tickformat=".0%"),
+        )
+        st.plotly_chart(mini, use_container_width=True)
+    with c_right:
+        st.markdown(
+            '<div class="section-title" style="font-size:1.1rem;">🧭 What makes this different</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+            - 🎯 **Model-backed, not user-input.** Every probability comes from a Dixon-Coles
+              fit on 7K internationals + 10K Monte Carlo runs — not random scenario picking.
+            - 💸 **Live vs Polymarket.** We rank every team by how wrong the market is,
+              weighted by market liquidity.
+            - 📏 **Backtested & honest.** +7.0% Brier skill vs a uniform baseline on
+              128 real WC matches (2018 + 2022).
+            - 🎲 **Interactive.** The *What-If* page re-runs the whole bracket conditional
+              on your picks — see probabilities shift in real time.
+            """
+        )
+        st.caption("Use the sidebar to explore. ⏭️")
 
 
 # ---------- Champion ----------
