@@ -814,7 +814,7 @@ elif page_id == "whatif":
         st.info(t("whatif_hint"))
 
 
-# ---------- Ask the Model (Challenge B) — dual-AI ----------
+# ---------- Ask the Model (Challenge B) — dual-AI chat ----------
 elif page_id == "ask":
     st.markdown(f'<div class="section-title">{t("ask_title")}</div>', unsafe_allow_html=True)
     st.markdown(f'<p class="section-caption">{t("ask_caption")}</p>', unsafe_allow_html=True)
@@ -826,118 +826,97 @@ elif page_id == "ask":
     data_context = build_data_context(probs, lb, summary)
 
     if "ask_history" not in st.session_state:
-        st.session_state["ask_history"] = []
+        st.session_state["ask_history"] = []  # list of {"role","content"} in time order
 
     st.caption(
-        "💬 `@claude` for Claude-only · `@gemini` for Gemini-only · "
-        "no prefix = both answer (AI vs AI)."
+        "💬 `@claude` → Claude 独答 · `@gemini` → Gemini 独答 · 直接问 = 两个 AI 都发言"
     )
 
-    # Example prompts (clickable)
-    examples = EXAMPLE_QUESTIONS.get(lang, EXAMPLE_QUESTIONS["en"])
-    cols = st.columns(len(examples))
-    preset = None
-    for c, ex in zip(cols, examples):
-        if c.button(ex, use_container_width=True, key=f"ex_{ex[:20]}"):
-            preset = ex
+    # Example prompts (clickable) — collapse once we have history
+    if not st.session_state["ask_history"]:
+        examples = EXAMPLE_QUESTIONS.get(lang, EXAMPLE_QUESTIONS["en"])
+        cols = st.columns(len(examples))
+        for c, ex in zip(cols, examples):
+            if c.button(ex, use_container_width=True, key=f"ex_{ex[:20]}"):
+                st.session_state["_preset_q"] = ex
+                st.rerun()
 
-    # Input
-    q = st.text_area(
+    # Render chat history in chronological order
+    for msg in st.session_state["ask_history"]:
+        role = msg["role"]
+        if role == "user":
+            with st.chat_message("user", avatar="🧑"):
+                st.markdown(msg["content"])
+        elif role == "claude":
+            with st.chat_message("assistant", avatar="🤖"):
+                st.markdown("**Claude** · _Anthropic_")
+                st.markdown(msg["content"])
+        elif role == "gemini":
+            with st.chat_message("assistant", avatar="💎"):
+                st.markdown("**Gemini** · _Google_")
+                st.markdown(msg["content"])
+        elif role == "error":
+            with st.chat_message("assistant", avatar="⚠️"):
+                st.warning(msg["content"])
+
+    # Input pinned to bottom of main area
+    preset = st.session_state.pop("_preset_q", None)
+    user_q = st.chat_input(
         t("ask_placeholder"),
-        value=preset or "",
-        placeholder=t("ask_placeholder"),
-        height=80,
-        label_visibility="collapsed",
-        key="ask_input",
+        key="ask_chat_input",
     )
-    c1, c2 = st.columns([1, 6])
-    go = c1.button(t("ask_button"), type="primary", use_container_width=True)
+    if preset and not user_q:
+        user_q = preset
 
-    if go and q.strip():
-        target, clean_q = parse_routing(q)
-        claude_ans = None
-        gemini_ans = None
-        claude_err = None
-        gemini_err = None
+    if user_q and user_q.strip():
+        target, clean_q = parse_routing(user_q)
 
-        with st.spinner(t("ask_thinking")):
-            if target in ("claude", "both"):
+        # Push user message immediately
+        st.session_state["ask_history"].append({"role": "user", "content": user_q})
+        with st.chat_message("user", avatar="🧑"):
+            st.markdown(user_q)
+
+        # Claude
+        if target in ("claude", "both"):
+            with st.chat_message("assistant", avatar="🤖"):
+                st.markdown("**Claude** · _Anthropic_")
+                placeholder = st.empty()
+                placeholder.markdown("_…thinking_")
                 try:
-                    claude_ans = ask_claude(clean_q, data_context, lang)
+                    ans = ask_claude(clean_q, data_context, lang)
+                    placeholder.markdown(ans)
+                    st.session_state["ask_history"].append({"role": "claude", "content": ans})
                 except RuntimeError as e:
-                    if "NO_CLAUDE_KEY" in str(e):
-                        claude_err = "ANTHROPIC_API_KEY not set."
-                    else:
-                        claude_err = str(e)
+                    msg = "ANTHROPIC_API_KEY not set." if "NO_CLAUDE_KEY" in str(e) else str(e)
+                    placeholder.warning(msg)
+                    st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {msg}"})
                 except Exception as e:
-                    claude_err = f"Claude error: {e}"
+                    placeholder.warning(f"Claude error: {e}")
+                    st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {e}"})
 
-            if target in ("gemini", "both"):
+        # Gemini
+        if target in ("gemini", "both"):
+            with st.chat_message("assistant", avatar="💎"):
+                st.markdown("**Gemini** · _Google_")
+                placeholder = st.empty()
+                placeholder.markdown("_…thinking_")
                 try:
-                    gemini_ans = ask_gemini(clean_q, data_context, lang)
+                    ans = ask_gemini(clean_q, data_context, lang)
+                    placeholder.markdown(ans)
+                    st.session_state["ask_history"].append({"role": "gemini", "content": ans})
                 except RuntimeError as e:
-                    if "NO_GEMINI_KEY" in str(e):
-                        gemini_err = "GEMINI_API_KEY not set."
-                    else:
-                        gemini_err = str(e)
+                    msg = "GEMINI_API_KEY not set." if "NO_GEMINI_KEY" in str(e) else str(e)
+                    placeholder.warning(msg)
+                    st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {msg}"})
                 except Exception as e:
-                    gemini_err = f"Gemini error: {e}"
+                    placeholder.warning(f"Gemini error: {e}")
+                    st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {e}"})
 
-        st.session_state["ask_history"].insert(0, {
-            "q": q,
-            "target": target,
-            "claude": claude_ans,
-            "claude_err": claude_err,
-            "gemini": gemini_ans,
-            "gemini_err": gemini_err,
-        })
-
-    # --- Render history ---
-    for turn in st.session_state["ask_history"][:6]:
-        st.markdown("---")
-        st.markdown(f"### 🧑 {turn['q']}")
-
-        target = turn.get("target", "both")
-        if target == "both":
-            cL, cR = st.columns(2)
-            with cL:
-                st.markdown(
-                    '<div style="background:#121c2e; border:1px solid #23315c; '
-                    'border-radius:12px; padding:14px 16px;">'
-                    '<div style="font-weight:700; color:#f7c948; margin-bottom:8px;">'
-                    '🤖 Claude <span style="color:#94a3c5; font-weight:400; font-size:0.8rem;">Anthropic</span></div>',
-                    unsafe_allow_html=True,
-                )
-                if turn["claude"]:
-                    st.markdown(turn["claude"])
-                else:
-                    st.warning(turn.get("claude_err") or "No response")
-                st.markdown("</div>", unsafe_allow_html=True)
-            with cR:
-                st.markdown(
-                    '<div style="background:#121c2e; border:1px solid #3a2f5c; '
-                    'border-radius:12px; padding:14px 16px;">'
-                    '<div style="font-weight:700; color:#a78bfa; margin-bottom:8px;">'
-                    '💎 Gemini <span style="color:#94a3c5; font-weight:400; font-size:0.8rem;">Google</span></div>',
-                    unsafe_allow_html=True,
-                )
-                if turn["gemini"]:
-                    st.markdown(turn["gemini"])
-                else:
-                    st.warning(turn.get("gemini_err") or "No response")
-                st.markdown("</div>", unsafe_allow_html=True)
-        elif target == "claude":
-            st.markdown("**🤖 Claude** (Anthropic)")
-            if turn["claude"]:
-                st.markdown(turn["claude"])
-            else:
-                st.warning(turn.get("claude_err") or "No response")
-        elif target == "gemini":
-            st.markdown("**💎 Gemini** (Google)")
-            if turn["gemini"]:
-                st.markdown(turn["gemini"])
-            else:
-                st.warning(turn.get("gemini_err") or "No response")
+    # Clear conversation button
+    if st.session_state["ask_history"]:
+        if st.button("🗑️ Clear conversation", key="clear_chat"):
+            st.session_state["ask_history"] = []
+            st.rerun()
 
 
 # ---------- Stage Reach ----------
