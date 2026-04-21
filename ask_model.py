@@ -70,6 +70,7 @@ def build_data_context(
     backtest_summary: pd.DataFrame,
     squads: pd.DataFrame | None = None,
     squad_metrics: pd.DataFrame | None = None,
+    groups: pd.DataFrame | None = None,
 ) -> str:
     """Compact textual context for the LLMs. ~1500-2500 tokens depending on squads."""
     lines = []
@@ -77,6 +78,15 @@ def build_data_context(
     lines.append("Model: Dixon-Coles bivariate Poisson, home_adv=0.21, rho=-0.095,")
     lines.append("  fit on ~7K internationals since 2019, 10,000 Monte Carlo runs.")
     lines.append("")
+
+    # Official FIFA 2026 group draw (held Dec 2025)
+    if groups is not None and not groups.empty:
+        lines.append("== 2026 FIFA World Cup — Official Group Draw (12 groups × 4 teams) ==")
+        for letter, g in groups.groupby("group"):
+            team_list = " | ".join(g.sort_values("pot_seed")["team"].tolist())
+            lines.append(f"Group {letter}: {team_list}")
+        lines.append("")
+
     lines.append("== Champion + stage probabilities (top 30) ==")
     lines.append("team | p_R32 | p_R16 | p_QF | p_SF | p_F | p_W")
     for _, r in probs.sort_values("p_W", ascending=False).head(30).iterrows():

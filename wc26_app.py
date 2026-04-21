@@ -356,6 +356,20 @@ def load_recent_matches() -> pd.DataFrame:
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
 
 
+@st.cache_data
+def load_groups() -> pd.DataFrame:
+    p = _p("wc2026_groups.parquet")
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+def _team_group(team: str, groups_df: pd.DataFrame) -> str | None:
+    """Return 'A' / 'B' / ... for a team, or None if unknown."""
+    if groups_df.empty:
+        return None
+    hit = groups_df[groups_df["team"] == team]
+    return hit.iloc[0]["group"] if len(hit) else None
+
+
 def _last_n_for_team(matches: pd.DataFrame, team: str, n: int = 10):
     """Return list of result chars ('W'/'D'/'L') for team's last n internationals."""
     if matches.empty:
@@ -1030,7 +1044,8 @@ elif page_id == "ask":
     summary = load_backtest_summary()
     squads_df = load_squads()
     metrics_df = load_squad_metrics()
-    data_context = build_data_context(probs, lb, summary, squads_df, metrics_df)
+    groups_df = load_groups()
+    data_context = build_data_context(probs, lb, summary, squads_df, metrics_df, groups_df)
 
     if "ask_history" not in st.session_state:
         st.session_state["ask_history"] = []  # list of {"role","content"} in time order
@@ -1120,6 +1135,7 @@ elif page_id == "explorer":
     probs = load_probs()
     lb = load_leaderboard()
     matches_df = load_recent_matches()
+    groups_df = load_groups()
 
     # Team picker: prefer teams with squad data first, but allow all 48 WC teams
     all_teams = sorted(probs["team"].unique())
@@ -1130,6 +1146,17 @@ elif page_id == "explorer":
         index=all_teams.index(default_team),
         format_func=team_with_flag,
     )
+
+    # Group label (e.g., "Group J with 🇩🇿 Algeria, 🇦🇹 Austria, 🇯🇴 Jordan")
+    g_letter = _team_group(team, groups_df)
+    if g_letter:
+        mates = groups_df[(groups_df["group"] == g_letter) & (groups_df["team"] != team)]
+        mate_names = " · ".join(team_with_flag(t) for t in mates["team"].tolist())
+        st.markdown(
+            f'<div class="wc-hint">🏟️ <b>Group {g_letter}</b> · '
+            f'with {mate_names}</div>',
+            unsafe_allow_html=True,
+        )
 
     # Row 1 — model & market KPIs
     probs_row = probs[probs["team"] == team].iloc[0] if (probs["team"] == team).any() else None
