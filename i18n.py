@@ -652,6 +652,9 @@ def set_language_from_sidebar():
     )
     if picked != lang_code:
         st.session_state["lang"] = picked
+        # Clear Ask-the-Model chat history so old-language messages don't linger
+        if "ask_history" in st.session_state:
+            st.session_state["ask_history"] = []
         st.rerun()
 
 
