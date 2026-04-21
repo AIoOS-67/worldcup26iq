@@ -25,6 +25,48 @@ from ask_model import (  # noqa: E402
     EXAMPLE_QUESTIONS,
 )
 
+# Lazy markdown lib for chat bubble content
+try:
+    import markdown as _md
+    def _md_to_html(text: str) -> str:
+        return _md.markdown(text or "", extensions=["fenced_code", "nl2br"])
+except ImportError:
+    def _md_to_html(text: str) -> str:
+        import html as _html
+        escaped = _html.escape(text or "")
+        return escaped.replace("\n\n", "</p><p>").replace("\n", "<br>")
+
+
+def _render_msg(role: str, content: str) -> str:
+    """Return HTML for a single WeChat-style message."""
+    if role == "user":
+        avatar, name, cls = "🧑", "You", "user"
+    elif role == "claude":
+        avatar, name, cls = "🤖", "Claude · Anthropic", "claude"
+    elif role == "gemini":
+        avatar, name, cls = "💎", "Gemini · Google", "gemini"
+    elif role == "thinking_claude":
+        avatar, name, cls = "🤖", "Claude · Anthropic", "claude"
+        inner = '<div class="wc-thinking">typing…</div>'
+        return (f'<div class="wc-row claude"><div class="wc-avatar">{avatar}</div>'
+                f'<div class="wc-bwrap"><div class="wc-name">{name}</div>'
+                f'<div class="wc-bubble claude">{inner}</div></div></div>')
+    elif role == "thinking_gemini":
+        avatar, name, cls = "💎", "Gemini · Google", "gemini"
+        inner = '<div class="wc-thinking">typing…</div>'
+        return (f'<div class="wc-row gemini"><div class="wc-avatar">{avatar}</div>'
+                f'<div class="wc-bwrap"><div class="wc-name">{name}</div>'
+                f'<div class="wc-bubble gemini">{inner}</div></div></div>')
+    else:
+        avatar, name, cls = "⚠️", "System", "error"
+
+    html_content = _md_to_html(content)
+    return (
+        f'<div class="wc-row {cls}"><div class="wc-avatar">{avatar}</div>'
+        f'<div class="wc-bwrap"><div class="wc-name">{name}</div>'
+        f'<div class="wc-bubble {cls}">{html_content}</div></div></div>'
+    )
+
 
 def team_with_flag(english: str) -> str:
     """Localized team name prefixed with its flag emoji."""
@@ -87,6 +129,64 @@ CUSTOM_CSS = """
   /* hide Streamlit chrome */
   #MainMenu { visibility: hidden; }
   footer { visibility: hidden; }
+
+  /* --- WeChat-style chat bubbles --- */
+  .wc-row { display: flex; margin: 10px 0; gap: 10px; align-items: flex-start; }
+  .wc-row.user { flex-direction: row-reverse; }
+  .wc-avatar {
+    width: 40px; height: 40px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; background: #1b2742; flex-shrink: 0;
+    border: 1px solid #23315c;
+  }
+  .wc-row.user .wc-avatar { background: #2a3f22; border-color: #4a7a2a; }
+  .wc-row.claude .wc-avatar { background: #3a2e15; border-color: #f7c94880; }
+  .wc-row.gemini .wc-avatar { background: #291f4a; border-color: #a78bfa80; }
+  .wc-bwrap { max-width: 72%; display: flex; flex-direction: column; }
+  .wc-row.user .wc-bwrap { align-items: flex-end; }
+  .wc-name {
+    font-size: 0.72rem; color: #94a3c5; margin-bottom: 4px; padding: 0 4px;
+    letter-spacing: 0.02em;
+  }
+  .wc-bubble {
+    padding: 10px 14px; border-radius: 10px; line-height: 1.55;
+    font-size: 0.95rem; word-wrap: break-word; overflow-wrap: anywhere;
+  }
+  .wc-bubble.user {
+    background: #95ec69 !important; color: #111 !important;
+    border-top-right-radius: 3px;
+  }
+  .wc-bubble.claude {
+    background: #1e2638 !important; color: #f5f7fb !important;
+    border: 1px solid #f7c94850; border-top-left-radius: 3px;
+  }
+  .wc-bubble.gemini {
+    background: #1f1a36 !important; color: #f5f7fb !important;
+    border: 1px solid #a78bfa50; border-top-left-radius: 3px;
+  }
+  .wc-bubble.error {
+    background: #2a1a1e !important; color: #fca5a5 !important;
+    border: 1px solid #7a2a2a;
+  }
+  .wc-bubble p { margin: 0 0 6px 0; }
+  .wc-bubble p:last-child { margin-bottom: 0 !important; }
+  .wc-bubble ul, .wc-bubble ol { margin: 4px 0 4px 20px; padding: 0; }
+  .wc-bubble li { margin: 2px 0; }
+  .wc-bubble.user strong { color: #000; }
+  .wc-bubble.claude strong { color: #f7c948; }
+  .wc-bubble.gemini strong { color: #c4b5fd; }
+  .wc-bubble code {
+    background: rgba(148,163,197,0.15); padding: 1px 5px; border-radius: 4px;
+    font-size: 0.88em;
+  }
+  .wc-thinking {
+    color: #94a3c5; font-style: italic; padding: 8px 14px;
+  }
+  .wc-hint {
+    background: #121c2e; border: 1px dashed #23315c; border-radius: 8px;
+    padding: 8px 12px; color: #94a3c5; font-size: 0.85rem; margin: 8px 0 16px 0;
+  }
+  .wc-hint code { color: #f7c948; background: transparent; padding: 0; }
 
   /* Hero card */
   div.hero {
@@ -828,11 +928,13 @@ elif page_id == "ask":
     if "ask_history" not in st.session_state:
         st.session_state["ask_history"] = []  # list of {"role","content"} in time order
 
-    st.caption(
-        "💬 `@claude` → Claude 独答 · `@gemini` → Gemini 独答 · 直接问 = 两个 AI 都发言"
+    st.markdown(
+        '<div class="wc-hint">💬 <code>@claude</code> → Claude 独答 · '
+        '<code>@gemini</code> → Gemini 独答 · 直接问 = 两个 AI 都发言</div>',
+        unsafe_allow_html=True,
     )
 
-    # Example prompts (clickable) — collapse once we have history
+    # Example prompts — collapse once we have history
     if not st.session_state["ask_history"]:
         examples = EXAMPLE_QUESTIONS.get(lang, EXAMPLE_QUESTIONS["en"])
         cols = st.columns(len(examples))
@@ -841,76 +943,58 @@ elif page_id == "ask":
                 st.session_state["_preset_q"] = ex
                 st.rerun()
 
-    # Render chat history in chronological order
+    # Render chat history as one HTML block
+    chat_html = '<div class="wc-chat">'
     for msg in st.session_state["ask_history"]:
-        role = msg["role"]
-        if role == "user":
-            with st.chat_message("user", avatar="🧑"):
-                st.markdown(msg["content"])
-        elif role == "claude":
-            with st.chat_message("assistant", avatar="🤖"):
-                st.markdown("**Claude** · _Anthropic_")
-                st.markdown(msg["content"])
-        elif role == "gemini":
-            with st.chat_message("assistant", avatar="💎"):
-                st.markdown("**Gemini** · _Google_")
-                st.markdown(msg["content"])
-        elif role == "error":
-            with st.chat_message("assistant", avatar="⚠️"):
-                st.warning(msg["content"])
+        chat_html += _render_msg(msg["role"], msg["content"])
+    chat_html += "</div>"
+    st.markdown(chat_html, unsafe_allow_html=True)
 
-    # Input pinned to bottom of main area
+    # Slot for in-flight thinking messages
+    thinking_slot = st.empty()
+
+    # Input pinned to bottom
     preset = st.session_state.pop("_preset_q", None)
-    user_q = st.chat_input(
-        t("ask_placeholder"),
-        key="ask_chat_input",
-    )
+    user_q = st.chat_input(t("ask_placeholder"), key="ask_chat_input")
     if preset and not user_q:
         user_q = preset
 
     if user_q and user_q.strip():
         target, clean_q = parse_routing(user_q)
-
-        # Push user message immediately
         st.session_state["ask_history"].append({"role": "user", "content": user_q})
-        with st.chat_message("user", avatar="🧑"):
-            st.markdown(user_q)
 
-        # Claude
+        # Show a "typing" bubble for whoever we're about to ask
+        thinking_html = '<div class="wc-chat">'
+        thinking_html += _render_msg("user", user_q)
         if target in ("claude", "both"):
-            with st.chat_message("assistant", avatar="🤖"):
-                st.markdown("**Claude** · _Anthropic_")
-                placeholder = st.empty()
-                placeholder.markdown("_…thinking_")
-                try:
-                    ans = ask_claude(clean_q, data_context, lang)
-                    placeholder.markdown(ans)
-                    st.session_state["ask_history"].append({"role": "claude", "content": ans})
-                except RuntimeError as e:
-                    msg = "ANTHROPIC_API_KEY not set." if "NO_CLAUDE_KEY" in str(e) else str(e)
-                    placeholder.warning(msg)
-                    st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {msg}"})
-                except Exception as e:
-                    placeholder.warning(f"Claude error: {e}")
-                    st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {e}"})
-
-        # Gemini
+            thinking_html += _render_msg("thinking_claude", "")
         if target in ("gemini", "both"):
-            with st.chat_message("assistant", avatar="💎"):
-                st.markdown("**Gemini** · _Google_")
-                placeholder = st.empty()
-                placeholder.markdown("_…thinking_")
-                try:
-                    ans = ask_gemini(clean_q, data_context, lang)
-                    placeholder.markdown(ans)
-                    st.session_state["ask_history"].append({"role": "gemini", "content": ans})
-                except RuntimeError as e:
-                    msg = "GEMINI_API_KEY not set." if "NO_GEMINI_KEY" in str(e) else str(e)
-                    placeholder.warning(msg)
-                    st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {msg}"})
-                except Exception as e:
-                    placeholder.warning(f"Gemini error: {e}")
-                    st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {e}"})
+            thinking_html += _render_msg("thinking_gemini", "")
+        thinking_html += "</div>"
+        thinking_slot.markdown(thinking_html, unsafe_allow_html=True)
+
+        # Call the actual APIs
+        if target in ("claude", "both"):
+            try:
+                ans = ask_claude(clean_q, data_context, lang)
+                st.session_state["ask_history"].append({"role": "claude", "content": ans})
+            except RuntimeError as e:
+                msg = "ANTHROPIC_API_KEY not set." if "NO_CLAUDE_KEY" in str(e) else str(e)
+                st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {msg}"})
+            except Exception as e:
+                st.session_state["ask_history"].append({"role": "error", "content": f"Claude: {e}"})
+
+        if target in ("gemini", "both"):
+            try:
+                ans = ask_gemini(clean_q, data_context, lang)
+                st.session_state["ask_history"].append({"role": "gemini", "content": ans})
+            except RuntimeError as e:
+                msg = "GEMINI_API_KEY not set." if "NO_GEMINI_KEY" in str(e) else str(e)
+                st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {msg}"})
+            except Exception as e:
+                st.session_state["ask_history"].append({"role": "error", "content": f"Gemini: {e}"})
+
+        st.rerun()
 
     # Clear conversation button
     if st.session_state["ask_history"]:

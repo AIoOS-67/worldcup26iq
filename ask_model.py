@@ -31,7 +31,7 @@ except ImportError:
 
 
 CLAUDE_MODEL = "claude-opus-4-7"
-GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_MODEL = "gemini-2.5-flash"
 MAX_TOKENS = 1200
 
 
@@ -214,15 +214,39 @@ def ask_gemini(question: str, context: str, lang: str) -> str:
         context=context,
         team_table=_team_table_for_lang(lang),
     )
+    # Disable thinking on 2.5-flash — otherwise reasoning tokens consume the
+    # output budget and we get empty responses.
+    config_kwargs: dict = {
+        "system_instruction": system,
+        "max_output_tokens": 2048,
+    }
+    try:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:
+        pass
+
     resp = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=question,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=MAX_TOKENS,
-        ),
+        config=types.GenerateContentConfig(**config_kwargs),
     )
-    return (resp.text or "(empty response)").strip()
+
+    # Prefer .text; fall back to candidate parts; finally surface finish reason.
+    text = resp.text if hasattr(resp, "text") else None
+    if text and text.strip():
+        return text.strip()
+
+    try:
+        c = resp.candidates[0]
+        if c.content and c.content.parts:
+            parts = [p.text for p in c.content.parts if getattr(p, "text", None)]
+            joined = "\n".join(parts).strip()
+            if joined:
+                return joined
+        finish = getattr(c, "finish_reason", "UNKNOWN")
+        raise RuntimeError(f"Gemini returned no text (finish_reason={finish})")
+    except (AttributeError, IndexError):
+        raise RuntimeError("Gemini returned no content")
 
 
 # ---------- routing ----------
