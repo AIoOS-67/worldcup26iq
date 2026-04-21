@@ -339,6 +339,48 @@ def load_backtest_predictions() -> pd.DataFrame:
 
 
 @st.cache_data
+def load_squads() -> pd.DataFrame:
+    p = _p("squads.parquet")
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_squad_metrics() -> pd.DataFrame:
+    p = _p("team_squad_metrics.parquet")
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_recent_matches() -> pd.DataFrame:
+    p = _p("team_recent_matches.parquet")
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+def _last_n_for_team(matches: pd.DataFrame, team: str, n: int = 10):
+    """Return list of result chars ('W'/'D'/'L') for team's last n internationals."""
+    if matches.empty:
+        return {"results": [], "W": 0, "D": 0, "L": 0, "avg_gd": 0.0, "n": 0}
+    m = matches[(matches["home_team"] == team) | (matches["away_team"] == team)]
+    m = m.sort_values("date").tail(n)
+    results, gds = [], []
+    for _, r in m.iterrows():
+        if r["home_team"] == team:
+            gd = int(r["home_goals"]) - int(r["away_goals"])
+        else:
+            gd = int(r["away_goals"]) - int(r["home_goals"])
+        results.append("W" if gd > 0 else "D" if gd == 0 else "L")
+        gds.append(gd)
+    return {
+        "results": results,
+        "W": results.count("W"),
+        "D": results.count("D"),
+        "L": results.count("L"),
+        "avg_gd": float(sum(gds) / len(gds)) if gds else 0.0,
+        "n": len(results),
+    }
+
+
+@st.cache_data
 def load_dc_params():
     p = pd.read_parquet(_p("dc_params.parquet"))
     s = pd.read_parquet(_p("dc_scalars.parquet")).iloc[0]
@@ -568,14 +610,15 @@ set_language_from_sidebar()
 st.sidebar.markdown(f"# {t('app_title')}")
 st.sidebar.caption(t("app_tagline"))
 PAGE_KEYS = [
-    ("hero",   t("nav_hero")),
-    ("champ",  t("nav_champ")),
-    ("misp",   t("nav_misp")),
-    ("whatif", t("nav_whatif")),
-    ("ask",    t("nav_ask")),
-    ("stage",  t("nav_stage")),
-    ("calib",  t("nav_calib")),
-    ("method", t("nav_method")),
+    ("hero",     t("nav_hero")),
+    ("champ",    t("nav_champ")),
+    ("misp",     t("nav_misp")),
+    ("whatif",   t("nav_whatif")),
+    ("ask",      t("nav_ask")),
+    ("explorer", t("nav_explorer")),
+    ("stage",    t("nav_stage")),
+    ("calib",    t("nav_calib")),
+    ("method",   t("nav_method")),
 ]
 page_labels = [lbl for _, lbl in PAGE_KEYS]
 page_label = st.sidebar.radio(t("navigate"), page_labels, index=0)
@@ -1063,6 +1106,132 @@ elif page_id == "ask":
         if st.button("🗑️ Clear conversation", key="clear_chat"):
             st.session_state["ask_history"] = []
             st.rerun()
+
+
+# ---------- Team Explorer ----------
+elif page_id == "explorer":
+    st.markdown(f'<div class="section-title">{t("exp_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("exp_caption")}</p>', unsafe_allow_html=True)
+
+    squads_df = load_squads()
+    metrics_df = load_squad_metrics()
+    probs = load_probs()
+    lb = load_leaderboard()
+    matches_df = load_recent_matches()
+
+    # Team picker: prefer teams with squad data first, but allow all 48 WC teams
+    all_teams = sorted(probs["team"].unique())
+    default_team = "Argentina" if "Argentina" in all_teams else all_teams[0]
+    team = st.selectbox(
+        t("exp_pick"),
+        all_teams,
+        index=all_teams.index(default_team),
+        format_func=team_with_flag,
+    )
+
+    # Row 1 — model & market KPIs
+    probs_row = probs[probs["team"] == team].iloc[0] if (probs["team"] == team).any() else None
+    edge_row  = lb[lb["team"] == team].iloc[0] if (lb["team"] == team).any() else None
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(t("exp_kpi_model"), f"{probs_row['p_W']*100:.1f}%" if probs_row is not None else "—")
+    if edge_row is not None:
+        k2.metric(t("exp_kpi_market"), f"{edge_row['market_p_W']*100:.1f}%")
+        delta_txt = "UNDER" if edge_row["direction"] == "UNDER" else "OVER"
+        k3.metric(t("exp_kpi_edge"), f"{edge_row['edge']*100:+.1f} pp", delta_txt)
+    else:
+        k2.metric(t("exp_kpi_market"), "—")
+        k3.metric(t("exp_kpi_edge"), "—")
+    k4.metric(t("exp_kpi_final"), f"{probs_row['p_F']*100:.1f}%" if probs_row is not None else "—")
+
+    # Row 2 — squad KPIs
+    m = metrics_df[metrics_df["team"] == team].iloc[0] if (metrics_df["team"] == team).any() else None
+    if m is not None:
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric(t("exp_squad_size"), int(m["squad_size"]))
+        s2.metric(t("exp_avg_age"), f"{m['avg_age']:.1f}")
+        s3.metric(t("exp_total_val"), f"€{m['total_market_value_m']:.0f}M")
+        s4.metric(t("exp_top3_share"), f"{m['top3_value_share']*100:.0f}%")
+    else:
+        st.info(t("exp_no_squad", team=team_with_flag(team)))
+
+    # Squad table
+    if not squads_df.empty and (squads_df["team"] == team).any():
+        st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("exp_squad_title")}</div>',
+                    unsafe_allow_html=True)
+        g = squads_df[squads_df["team"] == team].copy()
+        g = g.sort_values("market_value_eur", ascending=False)
+        g["Value"] = (g["market_value_eur"] / 1e6).round(1)
+        view = g[["player", "position", "age", "club", "club_league", "Value"]].rename(columns={
+            "player":     t("exp_col_player"),
+            "position":   t("exp_col_pos"),
+            "age":        t("exp_col_age"),
+            "club":       t("exp_col_club"),
+            "club_league":t("exp_col_league"),
+            "Value":      t("exp_col_value"),
+        })
+        st.dataframe(view, use_container_width=True, hide_index=True)
+
+    # Recent form
+    form = _last_n_for_team(matches_df, team, n=10)
+    if form["n"]:
+        st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("exp_form_title")}</div>',
+                    unsafe_allow_html=True)
+        pill_css = {
+            "W": "background:rgba(34,197,94,.22);color:#4ade80",
+            "D": "background:rgba(148,163,197,.2);color:#cbd5e8",
+            "L": "background:rgba(239,68,68,.22);color:#f87171",
+        }
+        pills = "".join(
+            f'<span style="display:inline-block;padding:4px 10px;border-radius:999px;'
+            f'font-weight:700;margin-right:4px;{pill_css[r]}">{r}</span>'
+            for r in form["results"]
+        )
+        st.markdown(pills, unsafe_allow_html=True)
+        gd_sign = "+" if form["avg_gd"] >= 0 else ""
+        st.caption(f"{form['W']}W {form['D']}D {form['L']}L · goal diff {gd_sign}{form['avg_gd']:.1f}/g")
+
+    # "Why" card
+    st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("exp_why_title")}</div>',
+                unsafe_allow_html=True)
+    bullets = []
+    if probs_row is not None and probs_row["p_W"] > 0.1:
+        bullets.append(f"✅ Model ranks them top-5 ({probs_row['p_W']*100:.1f}% champion)")
+    if edge_row is not None:
+        if edge_row["edge"] > 0.05:
+            bullets.append(f"📈 Undervalued by Polymarket ({edge_row['edge']*100:+.1f} pp)")
+        elif edge_row["edge"] < -0.05:
+            bullets.append(f"📉 Overvalued by Polymarket ({edge_row['edge']*100:+.1f} pp)")
+    if m is not None:
+        if m["top3_value_share"] > 0.5:
+            bullets.append(f"⚠️ Top 3 players carry {m['top3_value_share']*100:.0f}% of squad value — key-player risk")
+        if m["n_over_32"] >= 4:
+            bullets.append(f"⚠️ {int(m['n_over_32'])} players over 32 — stamina risk in 48-team format")
+        if m["n_under_23"] >= 2 and m["avg_age"] < 28:
+            bullets.append(f"✨ {int(m['n_under_23'])} under-23 players — Young Player award candidates")
+        if m["foreign_share"] >= 0.9:
+            bullets.append(f"🌍 {m['foreign_share']*100:.0f}% of squad plays abroad — high-level exposure")
+    if form["n"] and form["W"] >= form["n"] * 0.7:
+        bullets.append(f"🔥 {form['W']} wins in last {form['n']} — in form")
+    if not bullets:
+        bullets.append("_Not enough data yet — curated squad dataset covers 11 priority teams._")
+    st.markdown("\n".join(f"- {b}" for b in bullets))
+
+    # Path to final
+    if probs_row is not None:
+        st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("exp_path_title")}</div>',
+                    unsafe_allow_html=True)
+        stages = ["R32", "R16", "QF", "SF", "F", "W"]
+        vals = [probs_row[f"p_{s}"] for s in stages]
+        fig = go.Figure(go.Bar(x=stages, y=vals, marker_color="#f7c948",
+                               text=[f"{v*100:.1f}%" for v in vals], textposition="outside"))
+        fig.update_layout(
+            height=280, margin=dict(l=30, r=20, t=30, b=30),
+            paper_bgcolor="#0b1220", plot_bgcolor="#121c2e",
+            font=dict(color="#e8edf7"),
+            yaxis=dict(tickformat=".0%", gridcolor="#1b2742", range=[0, max(vals) * 1.25]),
+            xaxis=dict(gridcolor="#1b2742"),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 
 # ---------- Stage Reach ----------
