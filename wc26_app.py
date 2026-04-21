@@ -188,6 +188,45 @@ CUSTOM_CSS = """
   }
   .wc-hint code { color: #f7c948; background: transparent; padding: 0; }
 
+  /* Roadmap "Coming May 31" card */
+  .roadmap {
+    background: linear-gradient(135deg, #1a1034 0%, #2a1640 50%, #1a2a52 100%) !important;
+    border: 1px solid #a78bfa60 !important;
+    border-radius: 14px !important;
+    padding: 24px 28px !important;
+    margin: 20px 0 !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .roadmap::before {
+    content: ""; position: absolute; top: -30px; right: -30px;
+    width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle, #f7c94830 0%, transparent 70%);
+  }
+  .roadmap h2 {
+    color: #f7c948 !important; font-size: 1.4rem !important;
+    margin: 0 0 6px 0 !important; padding: 0 !important;
+  }
+  .roadmap p.date {
+    color: #c4b5fd !important; margin: 0 0 14px 0 !important;
+    font-size: 0.95rem !important;
+  }
+  .roadmap ul { list-style: none !important; padding: 0 !important; margin: 0 !important; }
+  .roadmap li {
+    color: #e8edf7 !important; padding: 6px 0 6px 24px !important;
+    position: relative; font-size: 0.92rem !important;
+  }
+  .roadmap li::before {
+    content: "→"; position: absolute; left: 0; color: #f7c948; font-weight: 700;
+  }
+  .roadmap li strong { color: #f7c948 !important; }
+  .roadmap .cta {
+    margin-top: 14px !important; padding: 10px 14px !important;
+    background: rgba(247, 201, 72, 0.08) !important;
+    border-left: 3px solid #f7c948 !important;
+    color: #f5f7fb !important; font-style: italic; border-radius: 4px !important;
+  }
+
   /* Hero card */
   div.hero {
     background: linear-gradient(135deg, #0f1b34 0%, #1a2752 100%) !important;
@@ -681,6 +720,29 @@ if page_id == "hero":
             f"- {t('diff_1')}\n\n- {t('diff_2')}\n\n- {t('diff_3')}\n\n- {t('diff_4')}"
         )
         st.caption(t("explore_sidebar"))
+
+    # --- Coming May 31 roadmap card ---
+    import re as _re
+    def _inline_md(s: str) -> str:
+        s = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+        s = _re.sub(r"«(.+?)»", r'<em>«\1»</em>', s)
+        return s
+    st.markdown(
+        f"""
+        <div class="roadmap">
+          <h2>{t('roadmap_title')}</h2>
+          <p class="date">{_inline_md(t('roadmap_date'))}</p>
+          <ul>
+            <li>{_inline_md(t('roadmap_b1'))}</li>
+            <li>{_inline_md(t('roadmap_b2'))}</li>
+            <li>{_inline_md(t('roadmap_b3'))}</li>
+            <li>{_inline_md(t('roadmap_b4'))}</li>
+          </ul>
+          <div class="cta">{t('roadmap_cta')}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------- Champion ----------
