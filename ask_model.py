@@ -1,14 +1,14 @@
 """
-Ask the Model — Claude-powered natural language interface for WorldCup26IQ.
+Ask the Model — dual-AI interface (Claude + Gemini).
 
-Design:
-  - Build a compact textual context of all precomputed model outputs (champion
-    probs, stage-reach probs, mispricing leaderboard, calibration metrics).
-  - Send that context + the user's question to Claude.
-  - Claude answers in the user's preferred language, grounded in the data.
+Users can:
+  - start with `@claude` to get Claude-only
+  - start with `@gemini` to get Gemini-only
+  - otherwise get BOTH side by side (the model-vs-model debate)
 
-The API key is read from Streamlit secrets (`ANTHROPIC_API_KEY`). On Cloud, set
-it via App settings → Secrets.
+Keys are read from Streamlit secrets or env vars:
+  ANTHROPIC_API_KEY
+  GEMINI_API_KEY  (or GOOGLE_API_KEY as fallback)
 """
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ import streamlit as st
 # Load .env if present (local dev). Streamlit Cloud uses st.secrets instead.
 try:
     from dotenv import load_dotenv
-    # Look for .env next to this file, and in the project root one level up.
     here = Path(__file__).resolve().parent
     for candidate in (here / ".env", here.parent / ".env"):
         if candidate.exists():
@@ -30,7 +29,9 @@ try:
 except ImportError:
     pass
 
-MODEL = "claude-opus-4-7"
+
+CLAUDE_MODEL = "claude-opus-4-7"
+GEMINI_MODEL = "gemini-2.5-pro"
 MAX_TOKENS = 1200
 
 
@@ -43,20 +44,32 @@ LANG_NAME = {
 }
 
 
-def _get_api_key() -> str | None:
+# ---------- API key helpers ----------
+def _get_anthropic_key() -> str | None:
     try:
         return st.secrets.get("ANTHROPIC_API_KEY")
     except Exception:
         return os.environ.get("ANTHROPIC_API_KEY")
 
 
+def _get_gemini_key() -> str | None:
+    try:
+        key = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+        if key:
+            return key
+    except Exception:
+        pass
+    return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+
+# ---------- shared context ----------
 @st.cache_data
 def build_data_context(
     probs: pd.DataFrame,
     leaderboard: pd.DataFrame,
     backtest_summary: pd.DataFrame,
 ) -> str:
-    """Compact textual context for the LLM. ~1500 tokens."""
+    """Compact textual context for the LLMs. ~1500 tokens."""
     lines = []
     lines.append("=== WorldCup26IQ model data (updated Apr 2026) ===\n")
     lines.append("Model: Dixon-Coles bivariate Poisson, home_adv=0.21, rho=-0.095,")
@@ -87,25 +100,6 @@ def build_data_context(
     return "\n".join(lines)
 
 
-SYSTEM_PROMPT_TEMPLATE = """\
-You are WorldCup26IQ's analyst. Your job is to answer questions about the 2026 FIFA World Cup using the PROVIDED DATA ONLY. You never make up numbers.
-
-# Rules
-- Answer in {lang_name}. Keep it under 180 words unless the user asks for detail.
-- Ground every probability claim in the provided data. Cite the relevant number.
-- When mentioning a team, use the localized name from the TEAM NAME TABLE below (not the English name), and prefix with the flag emoji. Example in {lang_name}: "{example_team}".
-- If the user asks a what-if or conditional question, explain what the model currently says AND tell them the What-If page lets them simulate it live.
-- If the user asks about a team not in the data, say so.
-- Be specific: if the user asks about a "sleeper", name 2-3 teams with evidence from the data.
-- Prefer insights over generic prose. "Argentina is 17pp undervalued vs Polymarket" beats "Argentina looks strong."
-
-# TEAM NAME TABLE ({lang_name})
-{team_table}
-
-# DATA
-{context}
-"""
-
 FLAGS_ASCII = {
     "Argentina": "🇦🇷", "Brazil": "🇧🇷", "France": "🇫🇷", "Spain": "🇪🇸",
     "Colombia": "🇨🇴", "Ecuador": "🇪🇨", "Morocco": "🇲🇦", "Japan": "🇯🇵",
@@ -120,10 +114,8 @@ FLAGS_ASCII = {
 
 
 def _team_table_for_lang(lang: str) -> str:
-    """Build a compact team translation table for the system prompt."""
     if lang == "en":
         return "(no translation needed)"
-    # Late import to avoid circulars
     from i18n import TEAMS
     lines = []
     for english, variants in TEAMS.items():
@@ -142,32 +134,112 @@ EXAMPLE_TEAM = {
 }
 
 
-def ask(question: str, context: str, lang: str) -> str:
-    api_key = _get_api_key()
+# ---------- prompt templates ----------
+CLAUDE_SYSTEM = """\
+You are WorldCup26IQ's **primary analyst** (nicknamed 'Claude'). Your job is to answer questions about the 2026 FIFA World Cup using the PROVIDED DATA ONLY. You never make up numbers.
+
+# Rules
+- Answer in {lang_name}. Keep it under 180 words unless the user asks for detail.
+- Ground every probability claim in the provided data. Cite the relevant number.
+- When mentioning a team, use the localized name from the TEAM NAME TABLE below (not the English name), and prefix with the flag emoji. Example in {lang_name}: "{example_team}".
+- If the user asks a what-if question, explain what the model currently says AND tell them the What-If page simulates it live.
+- If the team is not in the data, say so plainly.
+- Lean toward the model's quantitative view — that's your role.
+
+# TEAM NAME TABLE ({lang_name})
+{team_table}
+
+# DATA
+{context}
+"""
+
+
+GEMINI_SYSTEM = """\
+You are WorldCup26IQ's **second-opinion analyst** (nicknamed 'Gemini'). A peer analyst ('Claude') answers the same question in parallel, lean toward the raw model's view. Your job is to **add perspective**: if there's a reason the market (Polymarket) might be right and the model might be overfit or misleading, name it. Be the skeptical but constructive counter-voice.
+
+# Rules
+- Answer in {lang_name}. Keep it under 150 words — tighter than Claude.
+- Ground claims in the PROVIDED DATA. Never invent numbers.
+- When mentioning a team, use the localized name from the TEAM NAME TABLE and prefix with the flag emoji.
+- Identify any weaknesses in the model's answer: e.g., CONMEBOL bias, injury blindness, small-sample, format novelty (48-team new format), home-advantage assumptions.
+- If you fundamentally agree with Claude, say so and add one supporting angle — don't fabricate disagreement.
+- End with ONE concrete action the user could take on the app (e.g., "try locking X in What-If to test this").
+
+# TEAM NAME TABLE ({lang_name})
+{team_table}
+
+# DATA
+{context}
+"""
+
+
+# ---------- Claude ----------
+def ask_claude(question: str, context: str, lang: str) -> str:
+    api_key = _get_anthropic_key()
     if not api_key:
-        raise RuntimeError("NO_API_KEY")
-    from anthropic import Anthropic  # lazy import so missing dep doesn't break app
+        raise RuntimeError("NO_CLAUDE_KEY")
+    from anthropic import Anthropic
     client = Anthropic(api_key=api_key)
-    system = SYSTEM_PROMPT_TEMPLATE.format(
+    system = CLAUDE_SYSTEM.format(
         lang_name=LANG_NAME.get(lang, "English"),
         context=context,
         team_table=_team_table_for_lang(lang),
         example_team=EXAMPLE_TEAM.get(lang, EXAMPLE_TEAM["en"]),
     )
     resp = client.messages.create(
-        model=MODEL,
+        model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
         system=[
             {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
         ],
         messages=[{"role": "user", "content": question}],
     )
-    # Collect text from response
     parts = []
     for block in resp.content:
         if getattr(block, "type", None) == "text":
             parts.append(block.text)
     return "".join(parts) or "(empty response)"
+
+
+# ---------- Gemini ----------
+def ask_gemini(question: str, context: str, lang: str) -> str:
+    api_key = _get_gemini_key()
+    if not api_key:
+        raise RuntimeError("NO_GEMINI_KEY")
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    system = GEMINI_SYSTEM.format(
+        lang_name=LANG_NAME.get(lang, "English"),
+        context=context,
+        team_table=_team_table_for_lang(lang),
+    )
+    resp = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=question,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=MAX_TOKENS,
+        ),
+    )
+    return (resp.text or "(empty response)").strip()
+
+
+# ---------- routing ----------
+def parse_routing(question: str) -> tuple[str, str]:
+    """Return (target, cleaned_question). target in {'claude','gemini','both'}."""
+    q = question.strip()
+    low = q.lower()
+    if low.startswith("@claude"):
+        return "claude", q[len("@claude"):].strip(":,. ")
+    if low.startswith("@gemini"):
+        return "gemini", q[len("@gemini"):].strip(":,. ")
+    return "both", q
+
+
+# Backwards-compat shim (older Streamlit pages may still call ask())
+def ask(question: str, context: str, lang: str) -> str:
+    return ask_claude(question, context, lang)
 
 
 EXAMPLE_QUESTIONS = {

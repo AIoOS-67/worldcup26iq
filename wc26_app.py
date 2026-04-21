@@ -17,7 +17,13 @@ import streamlit as st
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from i18n import t, set_language_from_sidebar, LANGUAGES, translate_reason, team_name, TEAMS  # noqa: E402
-from ask_model import ask as ask_claude, build_data_context, EXAMPLE_QUESTIONS  # noqa: E402
+from ask_model import (  # noqa: E402
+    ask_claude,
+    ask_gemini,
+    parse_routing,
+    build_data_context,
+    EXAMPLE_QUESTIONS,
+)
 
 
 def team_with_flag(english: str) -> str:
@@ -808,7 +814,7 @@ elif page_id == "whatif":
         st.info(t("whatif_hint"))
 
 
-# ---------- Ask the Model (Challenge B) ----------
+# ---------- Ask the Model (Challenge B) — dual-AI ----------
 elif page_id == "ask":
     st.markdown(f'<div class="section-title">{t("ask_title")}</div>', unsafe_allow_html=True)
     st.markdown(f'<p class="section-caption">{t("ask_caption")}</p>', unsafe_allow_html=True)
@@ -821,6 +827,11 @@ elif page_id == "ask":
 
     if "ask_history" not in st.session_state:
         st.session_state["ask_history"] = []
+
+    st.caption(
+        "💬 `@claude` for Claude-only · `@gemini` for Gemini-only · "
+        "no prefix = both answer (AI vs AI)."
+    )
 
     # Example prompts (clickable)
     examples = EXAMPLE_QUESTIONS.get(lang, EXAMPLE_QUESTIONS["en"])
@@ -843,23 +854,90 @@ elif page_id == "ask":
     go = c1.button(t("ask_button"), type="primary", use_container_width=True)
 
     if go and q.strip():
-        try:
-            with st.spinner(t("ask_thinking")):
-                answer = ask_claude(q, data_context, lang)
-            st.session_state["ask_history"].insert(0, {"q": q, "a": answer})
-        except RuntimeError as e:
-            if "NO_API_KEY" in str(e):
-                st.error(t("ask_no_api"))
-            else:
-                st.error(str(e))
-        except Exception as e:
-            st.error(f"Claude API error: {e}")
+        target, clean_q = parse_routing(q)
+        claude_ans = None
+        gemini_ans = None
+        claude_err = None
+        gemini_err = None
 
-    # Render history
-    for i, turn in enumerate(st.session_state["ask_history"][:6]):
+        with st.spinner(t("ask_thinking")):
+            if target in ("claude", "both"):
+                try:
+                    claude_ans = ask_claude(clean_q, data_context, lang)
+                except RuntimeError as e:
+                    if "NO_CLAUDE_KEY" in str(e):
+                        claude_err = "ANTHROPIC_API_KEY not set."
+                    else:
+                        claude_err = str(e)
+                except Exception as e:
+                    claude_err = f"Claude error: {e}"
+
+            if target in ("gemini", "both"):
+                try:
+                    gemini_ans = ask_gemini(clean_q, data_context, lang)
+                except RuntimeError as e:
+                    if "NO_GEMINI_KEY" in str(e):
+                        gemini_err = "GEMINI_API_KEY not set."
+                    else:
+                        gemini_err = str(e)
+                except Exception as e:
+                    gemini_err = f"Gemini error: {e}"
+
+        st.session_state["ask_history"].insert(0, {
+            "q": q,
+            "target": target,
+            "claude": claude_ans,
+            "claude_err": claude_err,
+            "gemini": gemini_ans,
+            "gemini_err": gemini_err,
+        })
+
+    # --- Render history ---
+    for turn in st.session_state["ask_history"][:6]:
         st.markdown("---")
-        st.markdown(f"**🧑 {turn['q']}**")
-        st.markdown(f"🤖 {turn['a']}")
+        st.markdown(f"### 🧑 {turn['q']}")
+
+        target = turn.get("target", "both")
+        if target == "both":
+            cL, cR = st.columns(2)
+            with cL:
+                st.markdown(
+                    '<div style="background:#121c2e; border:1px solid #23315c; '
+                    'border-radius:12px; padding:14px 16px;">'
+                    '<div style="font-weight:700; color:#f7c948; margin-bottom:8px;">'
+                    '🤖 Claude <span style="color:#94a3c5; font-weight:400; font-size:0.8rem;">Anthropic</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if turn["claude"]:
+                    st.markdown(turn["claude"])
+                else:
+                    st.warning(turn.get("claude_err") or "No response")
+                st.markdown("</div>", unsafe_allow_html=True)
+            with cR:
+                st.markdown(
+                    '<div style="background:#121c2e; border:1px solid #3a2f5c; '
+                    'border-radius:12px; padding:14px 16px;">'
+                    '<div style="font-weight:700; color:#a78bfa; margin-bottom:8px;">'
+                    '💎 Gemini <span style="color:#94a3c5; font-weight:400; font-size:0.8rem;">Google</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if turn["gemini"]:
+                    st.markdown(turn["gemini"])
+                else:
+                    st.warning(turn.get("gemini_err") or "No response")
+                st.markdown("</div>", unsafe_allow_html=True)
+        elif target == "claude":
+            st.markdown("**🤖 Claude** (Anthropic)")
+            if turn["claude"]:
+                st.markdown(turn["claude"])
+            else:
+                st.warning(turn.get("claude_err") or "No response")
+        elif target == "gemini":
+            st.markdown("**💎 Gemini** (Google)")
+            if turn["gemini"]:
+                st.markdown(turn["gemini"])
+            else:
+                st.warning(turn.get("gemini_err") or "No response")
 
 
 # ---------- Stage Reach ----------
