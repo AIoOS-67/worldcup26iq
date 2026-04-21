@@ -1028,7 +1028,9 @@ elif page_id == "ask":
     probs = load_probs()
     lb = load_leaderboard()
     summary = load_backtest_summary()
-    data_context = build_data_context(probs, lb, summary)
+    squads_df = load_squads()
+    metrics_df = load_squad_metrics()
+    data_context = build_data_context(probs, lb, summary, squads_df, metrics_df)
 
     if "ask_history" not in st.session_state:
         st.session_state["ask_history"] = []  # list of {"role","content"} in time order

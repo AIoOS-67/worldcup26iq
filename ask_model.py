@@ -68,8 +68,10 @@ def build_data_context(
     probs: pd.DataFrame,
     leaderboard: pd.DataFrame,
     backtest_summary: pd.DataFrame,
+    squads: pd.DataFrame | None = None,
+    squad_metrics: pd.DataFrame | None = None,
 ) -> str:
-    """Compact textual context for the LLMs. ~1500 tokens."""
+    """Compact textual context for the LLMs. ~1500-2500 tokens depending on squads."""
     lines = []
     lines.append("=== WorldCup26IQ model data (updated Apr 2026) ===\n")
     lines.append("Model: Dixon-Coles bivariate Poisson, home_adv=0.21, rho=-0.095,")
@@ -97,7 +99,53 @@ def build_data_context(
     for _, r in backtest_summary.iterrows():
         lines.append(f"{r['model']} | year={r['year']} | brier={r['brier']:.4f} | logloss={r['logloss']:.4f}")
     lines.append("Brier skill score vs uniform: +7.0% across 128 WC matches (2018+2022).")
+
+    # Squad metrics + players (only 11 curated teams — Ken's starter dataset)
+    if squad_metrics is not None and not squad_metrics.empty:
+        lines.append("")
+        lines.append("== Squad metrics (curated 11 priority teams) ==")
+        lines.append("team | size | avg_age | total_value_M€ | top3_value_share | n_over_32 | n_under_23 | foreign_share | top_player")
+        for _, r in squad_metrics.iterrows():
+            lines.append(
+                f"{r['team']} | {r['squad_size']} | {r['avg_age']:.1f} | "
+                f"€{r['total_market_value_m']:.0f}M | {r['top3_value_share']*100:.0f}% | "
+                f"{r['n_over_32']} | {r['n_under_23']} | {r['foreign_share']*100:.0f}% | {r['top_player']}"
+            )
+
+    if squads is not None and not squads.empty:
+        lines.append("")
+        lines.append("== Individual players (curated — by team, top value first) ==")
+        lines.append("team | player | age | pos | club | league | value_M€")
+        for team, g in squads.groupby("team"):
+            g = g.sort_values("market_value_eur", ascending=False)
+            for _, p in g.iterrows():
+                mv = p["market_value_eur"] / 1_000_000
+                lines.append(
+                    f"{team} | {p['player']} | {p['age']} | {p['position']} | "
+                    f"{p['club']} | {p['club_league']} | €{mv:.0f}M"
+                )
+
     return "\n".join(lines)
+
+
+# ---------- App structure the AIs need to know about ----------
+APP_GUIDE = """\
+== App page guide (WorldCup26IQ) ==
+The user is on WorldCup26IQ right now. The app has these pages, accessible via the left sidebar:
+- 🏠 Hero (首页): headline, 4 KPI cards, top-5 favourites, top-5 mispricings, calibration mini-chart, "Coming May 31" roadmap.
+- 🏆 Champion Probabilities (夺冠概率): full bar chart + table for all 48 teams.
+- 💸 Mispricing Leaderboard (市场偏差排行榜): 43 Polymarket markets ranked by |edge| × √(liquidity), each with a data-backed reason.
+- 🎲 What-If Simulator (What-If 模拟器): user locks group winners/runners-up and re-runs 500-5,000 Monte Carlo tournaments conditional on those picks; output shows baseline vs conditional champion-probability shifts.
+- 🤖 Ask the Model (问问模型): THIS page — Claude + Gemini dual-AI chat; @claude / @gemini / no prefix routes the question.
+- 🔍 Team Explorer (球队详情): user selects one team → model/market KPIs, squad size/age/value/top-3-share, projected squad table, last-10 form pills, "Why the model rates them this way" card, path-to-final bar chart. Currently has full squad data for 11 priority teams (Argentina, France, Brazil, England, Spain, Portugal, Germany, Netherlands, USA, Canada, Mexico). All 48 teams covered May 31.
+- 📊 Stage Reach (晋级概率): multi-team comparison of P(reach R32/R16/QF/SF/F/W).
+- 📏 Calibration (校准): backtest evidence on 2018+2022 WCs, reliability diagram, +7.0% Brier skill score.
+- 📖 Methodology (方法论): full technical docs.
+
+When the user asks to "check Team Explorer" / "查球队详情" / similar page names, tell them the 🔍 Team Explorer page lets them drill in. If they ask a question the model data CAN answer directly, do that first and then optionally point to the relevant page.
+
+Squad/player-level answers are only available for the 11 curated teams listed above. For any other team, say squad data arrives May 31.
+"""
 
 
 FLAGS_ASCII = {
@@ -143,11 +191,14 @@ You are WorldCup26IQ's **primary analyst** (nicknamed 'Claude'). Your job is to 
 - Ground every probability claim in the provided data. Cite the relevant number.
 - When mentioning a team, use the localized name from the TEAM NAME TABLE below (not the English name), and prefix with the flag emoji. Example in {lang_name}: "{example_team}".
 - If the user asks a what-if question, explain what the model currently says AND tell them the What-If page simulates it live.
-- If the team is not in the data, say so plainly.
+- If the user asks about a specific app page ("查球队详情" / "check Team Explorer"), point them to the right sidebar entry AND give a quick answer from the data if you can.
+- If the team is not in the data, say so plainly. If asked about a player and the team IS in the curated 11, use the data. Otherwise say squads arrive May 31.
 - Lean toward the model's quantitative view — that's your role.
 
 # TEAM NAME TABLE ({lang_name})
 {team_table}
+
+{app_guide}
 
 # DATA
 {context}
@@ -161,12 +212,15 @@ You are WorldCup26IQ's **second-opinion analyst** (nicknamed 'Gemini'). A peer a
 - Answer in {lang_name}. Keep it under 150 words — tighter than Claude.
 - Ground claims in the PROVIDED DATA. Never invent numbers.
 - When mentioning a team, use the localized name from the TEAM NAME TABLE and prefix with the flag emoji.
-- Identify any weaknesses in the model's answer: e.g., CONMEBOL bias, injury blindness, small-sample, format novelty (48-team new format), home-advantage assumptions.
+- Identify any weaknesses in the model's answer: CONMEBOL bias, injury blindness, small sample, format novelty (48-team new format), home-advantage assumptions, squad-age or key-player risks.
+- Know the app structure — if the user asks about a page, guide them.
 - If you fundamentally agree with Claude, say so and add one supporting angle — don't fabricate disagreement.
-- End with ONE concrete action the user could take on the app (e.g., "try locking X in What-If to test this").
+- End with ONE concrete action the user could take on the app (e.g., "try locking X in What-If to test this" or "check 🔍 Team Explorer for France").
 
 # TEAM NAME TABLE ({lang_name})
 {team_table}
+
+{app_guide}
 
 # DATA
 {context}
@@ -185,6 +239,7 @@ def ask_claude(question: str, context: str, lang: str) -> str:
         context=context,
         team_table=_team_table_for_lang(lang),
         example_team=EXAMPLE_TEAM.get(lang, EXAMPLE_TEAM["en"]),
+        app_guide=APP_GUIDE,
     )
     resp = client.messages.create(
         model=CLAUDE_MODEL,
@@ -213,6 +268,7 @@ def ask_gemini(question: str, context: str, lang: str) -> str:
         lang_name=LANG_NAME.get(lang, "English"),
         context=context,
         team_table=_team_table_for_lang(lang),
+        app_guide=APP_GUIDE,
     )
     # Disable thinking on 2.5-flash — otherwise reasoning tokens consume the
     # output budget and we get empty responses.
