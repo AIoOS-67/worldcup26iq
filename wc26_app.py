@@ -613,6 +613,18 @@ def _knockout_winner(dc, home, away, rng):
 
 
 def infer_groups(fixtures: pd.DataFrame) -> dict:
+    """Official FIFA 2026 group draw (A-L) with team memberships.
+
+    Reads wc2026_groups.parquet (canonical source), falling back to
+    fixture-derived connected components only if that file is missing."""
+    groups_df = load_groups()
+    if not groups_df.empty:
+        return {
+            f"Group {letter}": sorted(g["team"].tolist())
+            for letter, g in groups_df.groupby("group")
+        }
+
+    # Fallback (should not run on deployed app — parquet ships with repo)
     from collections import defaultdict
     adj = defaultdict(set)
     for _, r in fixtures.iterrows():
