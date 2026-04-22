@@ -341,6 +341,16 @@ CUSTOM_CSS = """
   .s-league { color: #94a3c5 !important; font-size: 0.78rem !important; font-weight: 400 !important; margin-top: 2px; }
   .s-value { color: #f7c948 !important; font-weight: 700 !important; text-align: right !important; font-variant-numeric: tabular-nums; }
 
+  /* What-If group picker cards */
+  .gpick-title {
+    font-weight: 700; color: #f7c948;
+    letter-spacing: 0.05em;
+    padding: 6px 0 4px 2px;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #1b2742;
+    margin-bottom: 6px;
+  }
+
   /* What-If bracket view */
   .bracket {
     display: grid;
@@ -1217,44 +1227,53 @@ elif page_id == "whatif":
         unsafe_allow_html=True,
     )
 
+    # Cycle: unset → 🏆 (1st) → 🥈 (2nd) → unset. Selecting a slot
+    # displaces any other team already in that slot for the same group.
+    def _cycle_lock(gkey: str, team: str):
+        locks = st.session_state["wc26_locks"].setdefault(gkey, {})
+        if locks.get("1st") == team:
+            locks.pop("1st", None)
+            locks["2nd"] = team
+        elif locks.get("2nd") == team:
+            locks.pop("2nd", None)
+        else:
+            locks["1st"] = team
+        if not locks:
+            st.session_state["wc26_locks"].pop(gkey, None)
+
     group_keys = list(groups.keys())
-    new_locks = {}
     for i in range(0, len(group_keys), 4):
         cols = st.columns(4)
         for j, gkey in enumerate(group_keys[i:i + 4]):
             with cols[j]:
-                teams = [tm for tm in groups[gkey] if tm in dc["team_index"]]
-                st.markdown(f"**{gkey}**")
+                st.markdown(f'<div class="gpick-title">{gkey}</div>',
+                            unsafe_allow_html=True)
+                locks = st.session_state["wc26_locks"].get(gkey, {})
                 for tm in groups[gkey]:
-                    st.caption(f"{flag(tm)} {team_name(tm)}")
-                auto = t("whatif_auto")
-                w_key = f"lock_{gkey}_1st"
-                w = st.selectbox(t("whatif_winner"), [auto] + teams,
-                                 key=w_key, label_visibility="collapsed",
-                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🏆 {flag(x)} {team_name(x)}")
-                r_options = [auto] + [tm for tm in teams if tm != w]
-                r_key = f"lock_{gkey}_2nd"
-                if st.session_state.get(r_key) == w and w != auto:
-                    st.session_state[r_key] = auto
-                r = st.selectbox(t("whatif_runner"), r_options,
-                                 key=r_key, label_visibility="collapsed",
-                                 format_func=lambda x, _auto=auto: x if x == _auto else f"🥈 {flag(x)} {team_name(x)}")
-                lk = {}
-                if w != auto:
-                    lk["1st"] = w
-                if r != auto:
-                    lk["2nd"] = r
-                if lk:
-                    new_locks[gkey] = lk
+                    if locks.get("1st") == tm:
+                        badge, btn_type = "🏆", "primary"
+                    elif locks.get("2nd") == tm:
+                        badge, btn_type = "🥈", "primary"
+                    else:
+                        badge, btn_type = "　", "secondary"
+                    label = f"{badge} {flag(tm)} {team_name(tm)}"
+                    st.button(
+                        label,
+                        key=f"gpick_{gkey}_{tm}",
+                        use_container_width=True,
+                        type=btn_type,
+                        on_click=_cycle_lock,
+                        args=(gkey, tm),
+                    )
+
+    new_locks = {g: dict(v) for g, v in st.session_state["wc26_locks"].items() if v}
 
     st.markdown("---")
     c1, c2, c3 = st.columns([1, 1, 3])
     n_sims = c1.selectbox(t("whatif_sims"), [500, 1000, 2000, 5000], index=1)
     run = c2.button(t("whatif_run"), type="primary", use_container_width=True)
     if c3.button(t("whatif_reset")):
-        for k in list(st.session_state.keys()):
-            if k.startswith("lock_"):
-                del st.session_state[k]
+        st.session_state["wc26_locks"] = {}
         st.rerun()
 
     if run:
