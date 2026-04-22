@@ -315,6 +315,32 @@ CUSTOM_CSS = """
   .sch-row .venue { color: #94a3c5 !important; font-size: 0.85rem; }
   .sch-row .venue .stadium { color: #cbd5e8 !important; font-weight: 500; }
 
+  /* Squad list with headshots */
+  .squad-list { display: flex; flex-direction: column; margin: 8px 0; }
+  .s-row {
+    display: grid !important;
+    grid-template-columns: 52px 1.6fr 2fr 0.8fr !important;
+    gap: 12px !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    border-bottom: 1px solid #1b2742;
+    font-size: 0.92rem;
+  }
+  .s-row:hover { background: rgba(247,201,72,0.04); }
+  .s-avatar {
+    width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+    background: #1b2742; border: 2px solid #23315c;
+  }
+  .s-avatar.placeholder {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #94a3c5;
+  }
+  .s-name { color: #e8edf7 !important; font-weight: 600 !important; }
+  .s-pos { color: #94a3c5 !important; font-size: 0.78rem !important; font-weight: 400 !important; margin-top: 2px; }
+  .s-club { color: #cbd5e8 !important; font-weight: 500; }
+  .s-league { color: #94a3c5 !important; font-size: 0.78rem !important; font-weight: 400 !important; margin-top: 2px; }
+  .s-value { color: #f7c948 !important; font-weight: 700 !important; text-align: right !important; font-variant-numeric: tabular-nums; }
+
   /* Roadmap "Coming May 31" card */
   .roadmap {
     background: linear-gradient(135deg, #1a1034 0%, #2a1640 50%, #1a2a52 100%) !important;
@@ -469,6 +495,17 @@ def load_backtest_predictions() -> pd.DataFrame:
 def load_squads() -> pd.DataFrame:
     p = _p("squads.parquet")
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_player_photos() -> dict:
+    """Return {player_name: photo_url} map (skips rows without photo)."""
+    p = _p("player_photos.parquet")
+    if not p.exists():
+        return {}
+    df = pd.read_parquet(p)
+    df = df[df["photo_url"].notna()]
+    return dict(zip(df["player"], df["photo_url"]))
 
 
 @st.cache_data
@@ -1480,25 +1517,43 @@ elif page_id == "explorer":
         s2.metric(t("exp_avg_age"), f"{m['avg_age']:.1f}")
         s3.metric(t("exp_total_val"), f"€{m['total_market_value_m']:.0f}M")
         s4.metric(t("exp_top3_share"), f"{m['top3_value_share']*100:.0f}%")
-    else:
+    elif squads_df.empty or not (squads_df["team"] == team).any():
         st.info(t("exp_no_squad", team=team_with_flag(team)))
 
-    # Squad table
+    # Squad table with headshots
     if not squads_df.empty and (squads_df["team"] == team).any():
-        st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("exp_squad_title")}</div>',
+        photos = load_player_photos()
+        is_full = bool(m is not None)  # we have team_squad_metrics → full squad
+        title_text = t("exp_squad_title") if is_full else "⭐ Star players (not full squad — full 26-man arrives May 31)"
+        st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{title_text}</div>',
                     unsafe_allow_html=True)
+
         g = squads_df[squads_df["team"] == team].copy()
         g = g.sort_values("market_value_eur", ascending=False)
-        g["Value"] = (g["market_value_eur"] / 1e6).round(1)
-        view = g[["player", "position", "age", "club", "club_league", "Value"]].rename(columns={
-            "player":     t("exp_col_player"),
-            "position":   t("exp_col_pos"),
-            "age":        t("exp_col_age"),
-            "club":       t("exp_col_club"),
-            "club_league":t("exp_col_league"),
-            "Value":      t("exp_col_value"),
-        })
-        st.dataframe(view, use_container_width=True, hide_index=True)
+
+        rows_html = ['<div class="squad-list">']
+        for _, pr in g.iterrows():
+            photo = photos.get(pr["player"])
+            mv_m = pr["market_value_eur"] / 1e6
+            pos = pr["position"]
+            age = int(pr["age"])
+            club = pr["club"]
+            league = pr["club_league"]
+            avatar = (
+                f'<img class="s-avatar" src="{photo}" alt="{pr["player"]}" loading="lazy" />'
+                if photo
+                else f'<div class="s-avatar placeholder">⚽</div>'
+            )
+            rows_html.append(
+                f'<div class="s-row">'
+                f'  {avatar}'
+                f'  <div class="s-name">{pr["player"]}<div class="s-pos">{pos} · {age}</div></div>'
+                f'  <div class="s-club">{club}<div class="s-league">{league}</div></div>'
+                f'  <div class="s-value">€{mv_m:.0f}M</div>'
+                f"</div>"
+            )
+        rows_html.append("</div>")
+        st.markdown("\n".join(rows_html), unsafe_allow_html=True)
 
     # Recent form
     form = _last_n_for_team(matches_df, team, n=10)
