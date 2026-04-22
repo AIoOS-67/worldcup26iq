@@ -124,6 +124,57 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ---------- PWA manifest injection (makes the app installable on mobile home screens) ----------
+# st.markdown strips <script>, so we use components.html which runs in an iframe
+# and reaches into window.parent.document to modify the main page's <head>.
+import streamlit.components.v1 as _components
+_components.html(
+    """
+    <script>
+      (function() {
+        try {
+          const doc = window.parent.document;
+          const head = doc.head;
+          const origin = window.parent.location.origin;
+          // Streamlit Cloud serves static files at /app/static/...
+          const baseStatic = origin + '/app/static';
+
+          function ensure(selector, create) {
+            if (!doc.querySelector(selector)) head.appendChild(create());
+          }
+
+          ensure('link[rel="manifest"]', () => {
+            const l = doc.createElement('link');
+            l.rel = 'manifest'; l.href = baseStatic + '/manifest.webmanifest';
+            return l;
+          });
+          ensure('meta[name="theme-color"]', () => {
+            const m = doc.createElement('meta');
+            m.name = 'theme-color'; m.content = '#f7c948'; return m;
+          });
+          [
+            ['apple-mobile-web-app-capable',          'yes'],
+            ['apple-mobile-web-app-status-bar-style', 'black-translucent'],
+            ['apple-mobile-web-app-title',            'WC26IQ'],
+            ['mobile-web-app-capable',                'yes'],
+          ].forEach(([name, content]) => {
+            ensure(`meta[name="${name}"]`, () => {
+              const m = doc.createElement('meta');
+              m.name = name; m.content = content; return m;
+            });
+          });
+          ensure('link[rel="apple-touch-icon"]', () => {
+            const l = doc.createElement('link');
+            l.rel = 'apple-touch-icon'; l.href = baseStatic + '/icon-192.png';
+            return l;
+          });
+        } catch (e) { /* Cross-origin or sandbox — PWA disabled, page still works */ }
+      })();
+    </script>
+    """,
+    height=0,
+)
+
 CUSTOM_CSS = """
 <style>
   /* hide Streamlit chrome */
@@ -236,6 +287,33 @@ CUSTOM_CSS = """
     border-radius: 4px;
   }
   .grp-card .verdict strong { color: #f7c948 !important; }
+
+  /* Schedule table */
+  .sch-day {
+    color: #f7c948 !important; font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    margin: 18px 0 4px 0 !important;
+    padding-bottom: 4px; border-bottom: 1px solid #23315c;
+  }
+  .sch-row {
+    display: grid !important;
+    grid-template-columns: 60px 1fr 70px 2fr !important;
+    gap: 12px !important;
+    padding: 10px 8px !important; align-items: center !important;
+    border-bottom: 1px solid #1b2742;
+    font-size: 0.93rem;
+  }
+  .sch-row:hover { background: rgba(247,201,72,0.04); }
+  .sch-row .md { color: #94a3c5 !important; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; }
+  .sch-row .match { color: #e8edf7 !important; font-weight: 500; }
+  .sch-row .match .vs { color: #94a3c5; padding: 0 6px; }
+  .sch-row .group-chip {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    background: rgba(247,201,72,0.14); color: #f7c948 !important;
+    font-weight: 700; font-size: 0.78rem; text-align: center;
+  }
+  .sch-row .venue { color: #94a3c5 !important; font-size: 0.85rem; }
+  .sch-row .venue .stadium { color: #cbd5e8 !important; font-weight: 500; }
 
   /* Roadmap "Coming May 31" card */
   .roadmap {
@@ -419,6 +497,16 @@ def load_fixtures() -> pd.DataFrame:
     f = pd.read_parquet(p)
     f["date"] = pd.to_datetime(f["date"])
     return f
+
+
+@st.cache_data
+def load_schedule() -> pd.DataFrame:
+    p = _p("wc2026_schedule.parquet")
+    if not p.exists():
+        return pd.DataFrame()
+    s = pd.read_parquet(p)
+    s["date"] = pd.to_datetime(s["date"])
+    return s
 
 
 def _team_group(team: str, groups_df: pd.DataFrame) -> str | None:
@@ -687,6 +775,7 @@ PAGE_KEYS = [
     ("champ",    t("nav_champ")),
     ("misp",     t("nav_misp")),
     ("groups",   t("nav_groups")),
+    ("schedule", t("nav_schedule")),
     ("whatif",   t("nav_whatif")),
     ("ask",      t("nav_ask")),
     ("explorer", t("nav_explorer")),
@@ -1272,6 +1361,56 @@ elif page_id == "groups":
         st.markdown(cards_html, unsafe_allow_html=True)
 
         st.caption(f"💡 {t('grp_advance')} = P(reach Round of 32) from our 10K Monte Carlo runs.")
+
+
+# ---------- Schedule ----------
+elif page_id == "schedule":
+    st.markdown(f'<div class="section-title">{t("sch_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("sch_caption")}</p>', unsafe_allow_html=True)
+
+    sched = load_schedule()
+    groups_df = load_groups()
+    team_to_group = dict(zip(groups_df["team"], groups_df["group"])) if not groups_df.empty else {}
+
+    if sched.empty:
+        st.warning("Schedule data missing.")
+    else:
+        md_options = [t("sch_all"), "MD1", "MD2", "MD3"]
+        picked_md = st.radio(t("sch_matchday"), md_options, horizontal=True, label_visibility="collapsed")
+
+        view = sched if picked_md == t("sch_all") else sched[sched["matchday"] == picked_md]
+        view = view.sort_values("date").reset_index(drop=True)
+
+        html_blocks = []
+        current_date = None
+        for _, r in view.iterrows():
+            d = r["date"]
+            if current_date != d.date():
+                day_label = d.strftime("%a · %b %d")  # "Thu · Jun 11"
+                html_blocks.append(f'<div class="sch-day">{day_label}</div>')
+                current_date = d.date()
+            home = team_with_flag(r["home_team"])
+            away = team_with_flag(r["away_team"])
+            grp_letter = team_to_group.get(r["home_team"], "?")
+            grp_chip = t("sch_grp", letter=grp_letter)
+            stadium = r.get("stadium", "—")
+            city = r.get("city_nice", "")
+            host = r.get("host", "")
+            venue = (
+                f'<span class="stadium">{stadium}</span>'
+                f' · {city}' + (f' · {host}' if host and host != city else '')
+            )
+            html_blocks.append(
+                f'<div class="sch-row">'
+                f'<div class="md">{r["matchday"]}</div>'
+                f'<div class="match">{home} <span class="vs">vs</span> {away}</div>'
+                f'<div><span class="group-chip">{grp_chip}</span></div>'
+                f'<div class="venue">{venue}</div>'
+                f"</div>"
+            )
+        st.markdown("\n".join(html_blocks), unsafe_allow_html=True)
+
+        st.caption(f"💡 Total: {len(view)} matches  ·  16 host cities  ·  kickoff times TBA")
 
 
 # ---------- Team Explorer ----------

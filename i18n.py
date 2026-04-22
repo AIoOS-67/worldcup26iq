@@ -138,6 +138,25 @@ T: dict[str, dict[str, str]] = {
     "nav_groups":   {"en": "🏟️ Groups Overview", "zh": "🏟️ 小组总览",
                      "es": "🏟️ Resumen de grupos", "pt": "🏟️ Resumo dos grupos",
                      "fr": "🏟️ Vue des groupes"},
+    "nav_schedule": {"en": "📅 Schedule", "zh": "📅 赛程",
+                     "es": "📅 Calendario", "pt": "📅 Calendário",
+                     "fr": "📅 Calendrier"},
+
+    # ---------- Schedule ----------
+    "sch_title":    {"en": "📅 Schedule — Group Stage", "zh": "📅 小组赛赛程",
+                     "es": "📅 Calendario — Fase de grupos", "pt": "📅 Calendário — Fase de grupos",
+                     "fr": "📅 Calendrier — Phase de groupes"},
+    "sch_caption":  {"en": "All 72 group-stage matches. Jun 11 – Jun 27, 2026. Times TBD — venues confirmed.",
+                     "zh": "全部 72 场小组赛。2026 年 6 月 11 日 – 6 月 27 日。开球时间待定，球场已确认。",
+                     "es": "Los 72 partidos de fase de grupos. 11 jun – 27 jun 2026. Horarios por confirmar — sedes confirmadas.",
+                     "pt": "Todos os 72 jogos da fase de grupos. 11 jun – 27 jun 2026. Horários a confirmar — sedes confirmadas.",
+                     "fr": "Les 72 matchs de phase de poules. 11 juin – 27 juin 2026. Horaires à confirmer — stades confirmés."},
+    "sch_matchday": {"en": "Matchday", "zh": "轮次",
+                     "es": "Jornada", "pt": "Rodada", "fr": "Journée"},
+    "sch_all":      {"en": "All", "zh": "全部",
+                     "es": "Todas", "pt": "Todas", "fr": "Toutes"},
+    "sch_grp":      {"en": "Group {letter}", "zh": "{letter} 组",
+                     "es": "Grupo {letter}", "pt": "Grupo {letter}", "fr": "Groupe {letter}"},
 
     # ---------- Groups Overview ----------
     "grp_title":    {"en": "🏟️ Groups Overview", "zh": "🏟️ 小组总览",
