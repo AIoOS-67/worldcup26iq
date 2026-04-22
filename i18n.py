@@ -437,6 +437,16 @@ T: dict[str, dict[str, str]] = {
                      "es": "👆 Configura tus selecciones arriba y pulsa **Simular**.",
                      "pt": "👆 Configure suas escolhas acima e clique em **Simular**.",
                      "fr": "👆 Configurez vos choix ci-dessus, puis cliquez sur **Simuler**."},
+    "whatif_bracket":{"en": "🏆 Bracket — most likely teams per round",
+                      "zh": "🏆 淘汰赛对阵图 — 每一轮最可能晋级的球队",
+                      "es": "🏆 Cuadro — equipos más probables por ronda",
+                      "pt": "🏆 Chaveamento — seleções mais prováveis por fase",
+                      "fr": "🏆 Tableau — équipes les plus probables par tour"},
+    "whatif_bracket_caption":{"en": "Each column lists the teams most likely to reach that round, with their probability. Deeper color = higher probability.",
+                              "zh": "每一列列出最可能晋级到该轮的球队及概率。颜色越深，概率越高。",
+                              "es": "Cada columna lista los equipos con mayor probabilidad de llegar a esa ronda. Color más oscuro = mayor probabilidad.",
+                              "pt": "Cada coluna mostra as seleções com maior probabilidade de chegar àquela fase. Cor mais escura = maior probabilidade.",
+                              "fr": "Chaque colonne liste les équipes les plus susceptibles d'atteindre ce tour. Couleur plus foncée = probabilité plus élevée."},
 
     # ---------- Ask the Model ----------
     "ask_title":    {"en": "🤖 Ask the Model", "zh": "🤖 问问模型",

@@ -341,6 +341,53 @@ CUSTOM_CSS = """
   .s-league { color: #94a3c5 !important; font-size: 0.78rem !important; font-weight: 400 !important; margin-top: 2px; }
   .s-value { color: #f7c948 !important; font-weight: 700 !important; text-align: right !important; font-variant-numeric: tabular-nums; }
 
+  /* What-If bracket view */
+  .bracket {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin: 14px 0 8px 0;
+  }
+  .bracket-col {
+    display: flex; flex-direction: column; gap: 4px;
+    min-width: 0;
+  }
+  .bracket-col h4 {
+    color: #f7c948 !important; font-size: 0.88rem !important;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin: 0 0 6px 0 !important; padding: 0 !important;
+    text-align: center;
+  }
+  .bracket-cell {
+    position: relative;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #121c2e;
+    border: 1px solid #1b2742;
+    font-size: 0.78rem;
+    color: #e8edf7;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .bracket-cell .fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, rgba(247,201,72,.25) 0%, rgba(247,201,72,.08) 100%);
+    z-index: 0;
+  }
+  .bracket-cell .label, .bracket-cell .pct {
+    position: relative; z-index: 1;
+  }
+  .bracket-cell .label {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1 1 auto; font-weight: 500;
+  }
+  .bracket-cell .pct {
+    color: #f7c948; font-weight: 700; font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+  }
+  .bracket-cell.top { border-color: #f7c94860; background: #1a2340; }
+
   /* Roadmap "Coming May 31" card */
   .roadmap {
     background: linear-gradient(135deg, #1a1034 0%, #2a1640 50%, #1a2a52 100%) !important;
@@ -815,6 +862,43 @@ def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
     return pd.DataFrame(rows).sort_values("p_W", ascending=False).reset_index(drop=True)
 
 
+def render_bracket(res: pd.DataFrame) -> str:
+    """Return HTML for a 6-column bracket showing top teams reaching each round,
+    with fill-bar proportional to P(reach stage)."""
+    rounds = [
+        ("R32", "p_R32", 16),
+        ("R16", "p_R16", 12),
+        ("QF",  "p_QF",  8),
+        ("SF",  "p_SF",  6),
+        ("F",   "p_F",   4),
+        ("W",   "p_W",   3),
+    ]
+    html = ['<div class="bracket">']
+    for label, col, top_n in rounds:
+        html.append('<div class="bracket-col">')
+        html.append(f"<h4>{label}</h4>")
+        top = res.nlargest(top_n, col)
+        # Max of this column (for relative fill)
+        max_p = max(top[col].max(), 1e-6)
+        for rank_i, (_, r) in enumerate(top.iterrows()):
+            p = float(r[col])
+            if p < 0.001:
+                continue
+            pct_fill = min(100, 100 * p / max_p)
+            cls = "bracket-cell top" if rank_i < 2 else "bracket-cell"
+            tw = team_with_flag(r["team"])
+            html.append(
+                f'<div class="{cls}">'
+                f'<div class="fill" style="width:{pct_fill:.0f}%"></div>'
+                f'<span class="label">{tw}</span>'
+                f'<span class="pct">{p*100:.0f}%</span>'
+                f"</div>"
+            )
+        html.append("</div>")
+    html.append("</div>")
+    return "\n".join(html)
+
+
 # ---------- sidebar ----------
 set_language_from_sidebar()
 st.sidebar.markdown(f"# {t('app_title')}")
@@ -1186,6 +1270,17 @@ elif page_id == "whatif":
             f'<div class="section-title" style="margin-top:12px;">{t("whatif_results", n_locked=n_locked, n_sims=n_sims)}</div>',
             unsafe_allow_html=True,
         )
+
+        # Bracket view — 6-column tree, top teams per round
+        st.markdown(
+            f'<div class="section-title" style="font-size:1.1rem;margin-top:8px;">{t("whatif_bracket")}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<p class="section-caption" style="font-size:0.85rem;">{t("whatif_bracket_caption")}</p>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(render_bracket(res), unsafe_allow_html=True)
 
         top = res.head(15).copy()
         top["label"] = top["team"].apply(team_with_flag)
