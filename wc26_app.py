@@ -188,6 +188,55 @@ CUSTOM_CSS = """
   }
   .wc-hint code { color: #f7c948; background: transparent; padding: 0; }
 
+  /* Groups Overview cards */
+  .grp-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)) !important;
+    gap: 14px !important;
+    margin-top: 8px !important;
+  }
+  .grp-card {
+    background: #121c2e !important;
+    border: 1px solid #23315c !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+  }
+  .grp-card .letter {
+    display: inline-block; width: 32px; height: 32px; line-height: 32px;
+    text-align: center; border-radius: 8px;
+    background: #f7c948; color: #0b1220 !important;
+    font-weight: 800 !important; font-size: 1rem;
+    margin-right: 10px;
+  }
+  .grp-card h3 {
+    display: inline-block; color: #f7c948 !important;
+    margin: 0 !important; font-size: 1.1rem !important; vertical-align: middle;
+  }
+  .grp-card .dates {
+    color: #94a3c5 !important; font-size: 0.78rem;
+    margin: 6px 0 10px 0;
+  }
+  .grp-card table {
+    width: 100%; border-collapse: collapse; margin: 4px 0 8px 0;
+  }
+  .grp-card td {
+    padding: 5px 0 !important; font-size: 0.92rem;
+    border-bottom: 1px solid #1b2742;
+  }
+  .grp-card td.team { color: #e8edf7; font-weight: 500; }
+  .grp-card td.prob { text-align: right; color: #f7c948; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .grp-card tr.lock td.prob { color: #4ade80; }
+  .grp-card tr.out td.prob { color: #94a3c5; }
+  .grp-card tr.out td.team { color: #94a3c5; }
+  .grp-card .verdict {
+    margin-top: 8px; padding: 8px 10px;
+    background: rgba(247, 201, 72, 0.08);
+    border-left: 3px solid #f7c948;
+    color: #e8edf7 !important; font-size: 0.88rem;
+    border-radius: 4px;
+  }
+  .grp-card .verdict strong { color: #f7c948 !important; }
+
   /* Roadmap "Coming May 31" card */
   .roadmap {
     background: linear-gradient(135deg, #1a1034 0%, #2a1640 50%, #1a2a52 100%) !important;
@@ -360,6 +409,16 @@ def load_recent_matches() -> pd.DataFrame:
 def load_groups() -> pd.DataFrame:
     p = _p("wc2026_groups.parquet")
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_fixtures() -> pd.DataFrame:
+    p = _p("wc2026_fixtures.parquet")
+    if not p.exists():
+        return pd.DataFrame()
+    f = pd.read_parquet(p)
+    f["date"] = pd.to_datetime(f["date"])
+    return f
 
 
 def _team_group(team: str, groups_df: pd.DataFrame) -> str | None:
@@ -627,6 +686,7 @@ PAGE_KEYS = [
     ("hero",     t("nav_hero")),
     ("champ",    t("nav_champ")),
     ("misp",     t("nav_misp")),
+    ("groups",   t("nav_groups")),
     ("whatif",   t("nav_whatif")),
     ("ask",      t("nav_ask")),
     ("explorer", t("nav_explorer")),
@@ -1123,6 +1183,95 @@ elif page_id == "ask":
         if st.button("🗑️ Clear conversation", key="clear_chat"):
             st.session_state["ask_history"] = []
             st.rerun()
+
+
+# ---------- Groups Overview ----------
+elif page_id == "groups":
+    st.markdown(f'<div class="section-title">{t("grp_title")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("grp_caption")}</p>', unsafe_allow_html=True)
+
+    groups_df = load_groups()
+    probs = load_probs()
+    fixtures_df = load_fixtures()
+
+    if groups_df.empty:
+        st.warning("Groups data missing.")
+    else:
+        # Build a p_R32 lookup
+        adv = probs.set_index("team")["p_R32"].to_dict()
+
+        import re as _re
+        def _inline_md(s: str) -> str:
+            s = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+            return s
+
+        cards_html = '<div class="grp-grid">'
+        for letter in sorted(groups_df["group"].unique()):
+            teams_in_group = groups_df[groups_df["group"] == letter]["team"].tolist()
+
+            # Ranked by advance probability (p_R32)
+            ranked = sorted(teams_in_group, key=lambda t: adv.get(t, 0.0), reverse=True)
+            probs_list = [adv.get(t, 0.0) for t in ranked]
+
+            # Dates for this group's fixtures
+            date_str = ""
+            if not fixtures_df.empty:
+                grp_fx = fixtures_df[
+                    fixtures_df["home_team"].isin(teams_in_group)
+                    & fixtures_df["away_team"].isin(teams_in_group)
+                ]
+                if not grp_fx.empty:
+                    first = grp_fx["date"].min().strftime("%b %d")
+                    last = grp_fx["date"].max().strftime("%b %d")
+                    date_str = t("grp_dates", first=first, last=last)
+
+            # Verdict — pick the most interesting headline
+            top_prob = probs_list[0]
+            top_team = ranked[0]
+            gap_top_3rd = (probs_list[0] - probs_list[2]) * 100 if len(probs_list) >= 3 else 100
+            three_strong = sum(1 for p in probs_list if p >= 0.6)
+
+            if top_prob >= 0.9:
+                verdict = t("grp_verdict_lock", team=team_name(top_team), prob=int(top_prob * 100))
+            elif three_strong >= 3:
+                verdict = t("grp_verdict_death")
+            elif gap_top_3rd < 20:
+                verdict = t("grp_verdict_open", gap=int(gap_top_3rd))
+            else:
+                verdict = t("grp_verdict_fav", team=team_name(top_team))
+            verdict = _inline_md(verdict)
+
+            # Rows: top 2 = green, 3rd = amber-ish (default), 4th = muted
+            rows = ""
+            for i, (t_name_en, p) in enumerate(zip(ranked, probs_list)):
+                if i < 2:
+                    row_class = ""
+                elif i == 2:
+                    row_class = ""
+                else:
+                    row_class = "out"
+                emoji = flag(t_name_en)
+                localized = team_name(t_name_en)
+                rows += (
+                    f'<tr class="{row_class}">'
+                    f'<td class="team">{emoji} {localized}</td>'
+                    f'<td class="prob">{p*100:.0f}%</td>'
+                    f"</tr>"
+                )
+
+            cards_html += (
+                f'<div class="grp-card">'
+                f'<span class="letter">{letter}</span>'
+                f'<h3>Group {letter}</h3>'
+                f'<div class="dates">{date_str}</div>'
+                f'<table>{rows}</table>'
+                f'<div class="verdict">{verdict}</div>'
+                f'</div>'
+            )
+        cards_html += "</div>"
+        st.markdown(cards_html, unsafe_allow_html=True)
+
+        st.caption(f"💡 {t('grp_advance')} = P(reach Round of 32) from our 10K Monte Carlo runs.")
 
 
 # ---------- Team Explorer ----------
