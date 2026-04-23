@@ -1372,26 +1372,61 @@ elif page_id == "whatif":
             hide_index=True,
         )
 
+        # Dumbbell chart: baseline (grey) → conditional (up=green / down=red).
+        # Bigger conditional dot emphasises the "new reality" under your locks.
         top = res.head(15).copy()
         top["label"] = top["team"].apply(team_with_flag)
+        labels = top["label"].tolist()
+        baseline = top["baseline_p_W"].tolist()
+        conditional = top["p_W"].tolist()
+        deltas = top["delta"].tolist()
+
+        # One connector line per team (None-separated so a single trace draws
+        # segmented lines — cheaper than 15 traces).
+        line_x, line_y = [], []
+        for lbl, b, c in zip(labels, baseline, conditional):
+            line_x.extend([b, c, None])
+            line_y.extend([lbl, lbl, None])
+
+        # Conditional dot color by shift direction — green up, red down, grey flat.
+        def _shift_color(d):
+            if d > 0.005: return "#3dd68c"
+            if d < -0.005: return "#ef4444"
+            return "#94a3c5"
+        cond_colors = [_shift_color(d) for d in deltas]
+
         fig = go.Figure()
-        fig.add_trace(go.Bar(
-            y=top["label"], x=top["baseline_p_W"], orientation="h",
-            name=t("whatif_baseline"), marker_color="#94a3c5", opacity=0.6,
+        fig.add_trace(go.Scatter(
+            x=line_x, y=line_y, mode="lines",
+            line=dict(color="#3b4c6e", width=2),
+            hoverinfo="skip", showlegend=False,
         ))
-        fig.add_trace(go.Bar(
-            y=top["label"], x=top["p_W"], orientation="h",
-            name=t("whatif_conditional"), marker_color="#f7c948",
+        fig.add_trace(go.Scatter(
+            x=baseline, y=labels, mode="markers",
+            name=t("whatif_baseline"),
+            marker=dict(color="#94a3c5", size=10, line=dict(width=0)),
+            hovertemplate="%{y}<br>" + t("whatif_baseline") + ": %{x:.1%}<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=conditional, y=labels, mode="markers",
+            name=t("whatif_conditional"),
+            marker=dict(color=cond_colors, size=16,
+                        line=dict(color="#0b1220", width=1.5)),
+            customdata=list(zip(baseline, deltas)),
+            hovertemplate=(
+                "%{y}<br>" + t("whatif_conditional") + ": %{x:.1%}"
+                "<br>" + t("whatif_baseline") + ": %{customdata[0]:.1%}"
+                "<br>Δ %{customdata[1]:+.1%}<extra></extra>"
+            ),
         ))
         fig.update_layout(
-            barmode="overlay",
             height=520,
             margin=dict(l=140, r=40, t=20, b=40),
             paper_bgcolor="#0b1220", plot_bgcolor="#121c2e",
             font=dict(color="#e8edf7"),
             xaxis=dict(title="P(Win)", gridcolor="#1b2742", tickformat=".0%"),
-            yaxis=dict(autorange="reversed"),
-            legend=dict(bgcolor="rgba(0,0,0,0)"),
+            yaxis=dict(autorange="reversed", gridcolor="#1b2742"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=1.08, x=1, xanchor="right"),
         )
         st.plotly_chart(fig, use_container_width=True)
 
