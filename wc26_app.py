@@ -119,6 +119,41 @@ def with_flag(team: str) -> str:
     return f"{flag(team)} {team}"
 
 
+# ---------- FlagCDN: real flag images for table contexts ----------
+# Used by dataframes via st.column_config.ImageColumn. Includes ISO 3166-2
+# subdivision codes (gb-eng, gb-sct, gb-wls) so England, Scotland, and Wales
+# render their proper flags — not the Union Jack fallback used in emoji mode.
+ISO = {
+    "Algeria": "dz", "Argentina": "ar", "Australia": "au", "Austria": "at",
+    "Belgium": "be", "Bosnia and Herzegovina": "ba", "Brazil": "br",
+    "Canada": "ca", "Cape Verde": "cv", "Colombia": "co", "Croatia": "hr",
+    "Curaçao": "cw", "Curacao": "cw", "Czech Republic": "cz", "DR Congo": "cd",
+    "Ecuador": "ec", "Egypt": "eg", "England": "gb-eng",
+    "France": "fr", "Germany": "de", "Ghana": "gh", "Haiti": "ht",
+    "Iran": "ir", "Iraq": "iq", "Ivory Coast": "ci", "Japan": "jp",
+    "Jordan": "jo", "Mexico": "mx", "Morocco": "ma", "Netherlands": "nl",
+    "New Zealand": "nz", "Norway": "no", "Panama": "pa", "Paraguay": "py",
+    "Portugal": "pt", "Qatar": "qa", "Saudi Arabia": "sa", "Scotland": "gb-sct",
+    "Senegal": "sn", "South Africa": "za", "South Korea": "kr", "Spain": "es",
+    "Sweden": "se", "Switzerland": "ch", "Tunisia": "tn", "Turkey": "tr",
+    "United States": "us", "Uruguay": "uy", "Uzbekistan": "uz",
+    # Extras that show up in historical Polymarket markets
+    "Republic of Ireland": "ie", "Northern Ireland": "gb-nir", "Wales": "gb-wls",
+    "Chile": "cl", "Peru": "pe", "Bolivia": "bo", "Venezuela": "ve",
+    "Poland": "pl", "Ukraine": "ua", "Serbia": "rs", "Greece": "gr",
+    "Denmark": "dk", "Hungary": "hu", "Romania": "ro", "Slovakia": "sk",
+    "Slovenia": "si", "Albania": "al", "Israel": "il", "Italy": "it",
+    "Cameroon": "cm", "Nigeria": "ng", "Kenya": "ke",
+}
+
+
+def flag_url(team: str, size: str = "w40") -> str | None:
+    """FlagCDN PNG URL for a team. None if team not mapped — caller should fall
+    back to emoji. Sizes: w20, w40, w80, w160, w320, w640."""
+    code = ISO.get(team)
+    return f"https://flagcdn.com/{size}/{code}.png" if code else None
+
+
 # ---------- global config + CSS ----------
 st.set_page_config(
     page_title="WorldCup26IQ",
@@ -1347,32 +1382,37 @@ elif page_id == "whatif":
         locked_thirds_set = {lk["3rd"] for lk in new_locks.values() if "3rd" in lk}
         thirds = res[res["p_third_pos"] > 0].copy()
         thirds = thirds.sort_values("p_third_adv", ascending=False).head(12)
+        thirds["flag"] = thirds["team"].apply(lambda tm: flag_url(tm, "w80") or "")
         thirds["team_disp"] = thirds["team"].apply(
-            lambda tm: f"🔒 {team_with_flag(tm)}" if tm in locked_thirds_set else team_with_flag(tm)
+            lambda tm: f"🔒 {team_name(tm)}" if tm in locked_thirds_set else team_name(tm)
         )
+        col_flag, col_team, col_group, col_p3 = "Flag", t("whatif_col_team"), t("whatif_col_group"), t("whatif_col_p_third")
+        col_adv, col_pts, col_gd = t("whatif_col_p_adv"), t("whatif_col_avg_pts"), t("whatif_col_avg_gd")
         thirds_view = thirds[[
-            "team_disp", "group", "p_third_pos", "p_third_adv",
+            "flag", "team_disp", "group", "p_third_pos", "p_third_adv",
             "third_avg_pts", "third_avg_gd",
         ]].rename(columns={
-            "team_disp": t("whatif_col_team"),
-            "group": t("whatif_col_group"),
-            "p_third_pos": t("whatif_col_p_third"),
-            "p_third_adv": t("whatif_col_p_adv"),
-            "third_avg_pts": t("whatif_col_avg_pts"),
-            "third_avg_gd": t("whatif_col_avg_gd"),
+            "flag": col_flag,
+            "team_disp": col_team,
+            "group": col_group,
+            "p_third_pos": col_p3,
+            "p_third_adv": col_adv,
+            "third_avg_pts": col_pts,
+            "third_avg_gd": col_gd,
         })
         st.dataframe(
-            thirds_view.style.format({
-                t("whatif_col_p_third"): "{:.1%}",
-                t("whatif_col_p_adv"): "{:.1%}",
-                t("whatif_col_avg_pts"): "{:.2f}",
-                t("whatif_col_avg_gd"): "{:+.2f}",
-            }).bar(
-                subset=[t("whatif_col_p_adv")],
-                color="#f7c948", vmin=0, vmax=1,
-            ),
+            thirds_view,
             use_container_width=True,
             hide_index=True,
+            column_config={
+                col_flag: st.column_config.ImageColumn(col_flag, width="small"),
+                col_p3: st.column_config.NumberColumn(col_p3, format="percent"),
+                col_adv: st.column_config.ProgressColumn(
+                    col_adv, format="percent", min_value=0, max_value=1,
+                ),
+                col_pts: st.column_config.NumberColumn(col_pts, format="%.2f"),
+                col_gd: st.column_config.NumberColumn(col_gd, format="%+.2f"),
+            },
         )
 
         # Dumbbell chart: baseline (grey) → conditional (up=green / down=red).
@@ -1441,14 +1481,27 @@ elif page_id == "whatif":
             f'<div class="section-title" style="font-size:1.1rem;">{t("whatif_shifts")}</div>',
             unsafe_allow_html=True,
         )
-        view = shifts.copy()
-        view["team"] = view["team"].apply(team_with_flag)
+        shifts["flag"] = shifts["team"].apply(lambda tm: flag_url(tm, "w80") or "")
+        shifts["team_disp"] = shifts["team"].apply(team_name)
+        s_flag, s_team = "Flag", t("whatif_col_team")
+        s_base, s_cond, s_delta = t("whatif_baseline"), t("whatif_conditional"), "Δ"
+        shifts_view = shifts[["flag", "team_disp", "baseline_p_W", "p_W", "delta"]].rename(columns={
+            "flag": s_flag,
+            "team_disp": s_team,
+            "baseline_p_W": s_base,
+            "p_W": s_cond,
+            "delta": s_delta,
+        })
         st.dataframe(
-            view[["team", "baseline_p_W", "p_W", "delta"]].style.format({
-                "baseline_p_W": "{:.1%}", "p_W": "{:.1%}", "delta": "{:+.1%}"
-            }),
+            shifts_view,
             use_container_width=True,
             hide_index=True,
+            column_config={
+                s_flag: st.column_config.ImageColumn(s_flag, width="small"),
+                s_base: st.column_config.NumberColumn(s_base, format="percent"),
+                s_cond: st.column_config.NumberColumn(s_cond, format="percent"),
+                s_delta: st.column_config.NumberColumn(s_delta, format="percent"),
+            },
         )
     else:
         st.info(t("whatif_hint"))
