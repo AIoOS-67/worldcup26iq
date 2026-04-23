@@ -6,6 +6,7 @@ or the script directory.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -173,6 +174,15 @@ def flag_img(team: str, h: int = 16, size: str = "w40") -> str:
 def team_with_flag_img(team: str, h: int = 16) -> str:
     """<img> flag + localized team name (HTML contexts)."""
     return f"{flag_img(team, h)} {team_name(team)}"
+
+
+def merch_link(team: str, kind: str = "jersey") -> str:
+    """Affiliate-ready outbound URL for team merchandise. Currently points at
+    Fanatics search; swap in a real tagged affiliate URL once the Impact /
+    ShareASale / Awin program is approved (see desktop 'AI 商店' brief)."""
+    import urllib.parse
+    q = urllib.parse.quote_plus(f"{team} {kind}")
+    return f"https://www.fanatics.com/search?query={q}"
 
 
 # ---------- global config + CSS ----------
@@ -640,6 +650,19 @@ def load_recent_matches() -> pd.DataFrame:
 def load_groups() -> pd.DataFrame:
     p = _p("wc2026_groups.parquet")
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def load_team_media() -> dict:
+    """Return {team_name: {badge, jersey, logo, banner, desc_en}} map populated
+    by scripts/fetch_team_media.py (TheSportsDB). Empty dict if not present."""
+    p = _p("team_media.json")
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 @st.cache_data
@@ -1823,6 +1846,49 @@ elif page_id == "explorer":
         s4.metric(t("exp_top3_share"), f"{m['top3_value_share']*100:.0f}%")
     elif squads_df.empty or not (squads_df["team"] == team).any():
         st.info(t("exp_no_squad", team=team_with_flag(team)))
+
+    # Team kit — crest + home jersey from TheSportsDB, click = Fanatics
+    # search (affiliate-link-ready placeholder). Only render when we have at
+    # least the badge.
+    media = load_team_media().get(team, {})
+    if media.get("badge") or media.get("jersey"):
+        st.markdown(
+            f'<div class="section-title" style="font-size:1.1rem;margin-top:12px;">'
+            f'{t("exp_kit_title")}</div>',
+            unsafe_allow_html=True,
+        )
+        shop_url = merch_link(team)
+        shop_label = t("exp_kit_shop", team=team_name(team))
+        kit_html = ['<div style="display:flex;gap:24px;align-items:flex-start;'
+                    'background:#121c2e;border-radius:10px;padding:16px;'
+                    'border:1px solid #1b2742;margin-bottom:12px;">']
+        if media.get("badge"):
+            kit_html.append(
+                f'<div style="text-align:center;min-width:120px;">'
+                f'<a href="{shop_url}" target="_blank" rel="noopener sponsored">'
+                f'<img src="{media["badge"]}" alt="{team} crest" '
+                f'style="max-height:120px;max-width:120px;'
+                f'filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));"></a>'
+                f'<div style="font-size:0.8rem;color:#94a3c5;margin-top:6px;">'
+                f'{t("exp_kit_crest")}</div></div>'
+            )
+        if media.get("jersey"):
+            kit_html.append(
+                f'<div style="text-align:center;min-width:180px;">'
+                f'<a href="{shop_url}" target="_blank" rel="noopener sponsored">'
+                f'<img src="{media["jersey"]}" alt="{team} jersey" '
+                f'style="height:180px;width:auto;border-radius:6px;'
+                f'background:rgba(255,255,255,0.02);padding:8px;"></a>'
+                f'<div style="font-size:0.8rem;color:#94a3c5;margin-top:6px;">'
+                f'{t("exp_kit_jersey")}</div></div>'
+            )
+        kit_html.append('<div style="flex-basis:100%;margin-top:8px;">'
+                        f'<a href="{shop_url}" target="_blank" rel="noopener sponsored" '
+                        f'style="display:inline-block;background:#f7c948;color:#0b1220;'
+                        f'font-weight:600;padding:8px 16px;border-radius:6px;'
+                        f'text-decoration:none;">{shop_label}</a></div>')
+        kit_html.append('</div>')
+        st.markdown("\n".join(kit_html), unsafe_allow_html=True)
 
     # Squad table with headshots
     if not squads_df.empty and (squads_df["team"] == team).any():
