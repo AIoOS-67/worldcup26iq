@@ -164,10 +164,10 @@ FLAGS_ASCII = {
     "Paraguay": "🇵🇾", "Uruguay": "🇺🇾", "Portugal": "🇵🇹", "Germany": "🇩🇪",
     "Netherlands": "🇳🇱", "Mexico": "🇲🇽", "United States": "🇺🇸", "Canada": "🇨🇦",
     "Saudi Arabia": "🇸🇦", "Senegal": "🇸🇳", "Australia": "🇦🇺", "Norway": "🇳🇴",
-    "Switzerland": "🇨🇭", "Algeria": "🇩🇿", "Croatia": "🇭🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Switzerland": "🇨🇭", "Algeria": "🇩🇿", "Croatia": "🇭🇷", "England": "🇬🇧",
     "Iran": "🇮🇷", "Ghana": "🇬🇭", "South Korea": "🇰🇷", "Ivory Coast": "🇨🇮",
     "DR Congo": "🇨🇩", "Cape Verde": "🇨🇻", "Tunisia": "🇹🇳", "Egypt": "🇪🇬",
-    "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "Sweden": "🇸🇪", "Belgium": "🇧🇪", "Austria": "🇦🇹",
+    "Scotland": "🇬🇧", "Sweden": "🇸🇪", "Belgium": "🇧🇪", "Austria": "🇦🇹",
 }
 
 
