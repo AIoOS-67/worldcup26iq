@@ -154,6 +154,27 @@ def flag_url(team: str, size: str = "w40") -> str | None:
     return f"https://flagcdn.com/{size}/{code}.png" if code else None
 
 
+def flag_img(team: str, h: int = 16, size: str = "w40") -> str:
+    """Inline <img> tag for a team's flag (HTML contexts only). Falls back to
+    the emoji flag() if team isn't in ISO map. Use this instead of flag() in
+    any st.markdown(..., unsafe_allow_html=True) block so flags render on
+    browsers that don't support regional-indicator emoji (e.g. some Chrome
+    installs on Windows)."""
+    url = flag_url(team, size)
+    if not url:
+        return flag(team)
+    return (
+        f'<img src="{url}" alt="{team}" '
+        f'style="height:{h}px;vertical-align:-2px;border-radius:2px;'
+        f'box-shadow:0 0 0 1px rgba(255,255,255,0.08);">'
+    )
+
+
+def team_with_flag_img(team: str, h: int = 16) -> str:
+    """<img> flag + localized team name (HTML contexts)."""
+    return f"{flag_img(team, h)} {team_name(team)}"
+
+
 # ---------- global config + CSS ----------
 st.set_page_config(
     page_title="WorldCup26IQ",
@@ -959,7 +980,7 @@ def render_bracket(res: pd.DataFrame) -> str:
                 continue
             pct_fill = min(100, 100 * p / max_p)
             cls = "bracket-cell top" if rank_i < 2 else "bracket-cell"
-            tw = team_with_flag(r["team"])
+            tw = team_with_flag_img(r["team"], h=14)
             html.append(
                 f'<div class="{cls}">'
                 f'<div class="fill" style="width:{pct_fill:.0f}%"></div>'
@@ -1010,10 +1031,10 @@ if page_id == "hero":
 
     headline_text = t("hero_wrong",
                        over_pp=f"{best_over['edge']*100:+.0f}",
-                       over_flag=flag(best_over["team"]),
+                       over_flag=flag_img(best_over["team"], h=18),
                        over_team=team_name(best_over["team"]),
                        under_pp=f"{best_under['edge']*100:+.0f}",
-                       under_flag=flag(best_under["team"]),
+                       under_flag=flag_img(best_under["team"], h=18),
                        under_team=team_name(best_under["team"]))
     st.markdown(
         f"""
@@ -1031,12 +1052,12 @@ if page_id == "hero":
         <div class="kpi-grid">
           <div class="kpi">
             <div class="label">{t('kpi_biggest_under')}</div>
-            <div class="value">{team_with_flag(best_under['team'])}</div>
+            <div class="value">{team_with_flag_img(best_under['team'], h=18)}</div>
             <div class="delta up">{best_under['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_under['market_p_W']*100:.1f}", model=f"{best_under['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
             <div class="label">{t('kpi_biggest_over')}</div>
-            <div class="value">{team_with_flag(best_over['team'])}</div>
+            <div class="value">{team_with_flag_img(best_over['team'], h=18)}</div>
             <div class="delta down">{best_over['edge']*100:+.1f} pp · {t('kpi_mkt_model', mkt=f"{best_over['market_p_W']*100:.1f}", model=f"{best_over['p_W']*100:.1f}")}</div>
           </div>
           <div class="kpi">
@@ -1064,7 +1085,7 @@ if page_id == "hero":
                 f"""
                 <div class="kpi">
                   <div class="label">#{i+1}</div>
-                  <div class="value">{team_with_flag(row['team'])}</div>
+                  <div class="value">{team_with_flag_img(row['team'], h=18)}</div>
                   <div class="delta muted">{row['p_W']*100:.1f}% {t('champion_suffix')}</div>
                 </div>
                 """,
@@ -1087,7 +1108,7 @@ if page_id == "hero":
         rows_html += (
             f'<div class="mis-row">'
             f'<div class="rank">#{int(r["rank"])}</div>'
-            f'<div class="team">{team_with_flag(r["team"])}</div>'
+            f'<div class="team">{team_with_flag_img(r["team"], h=16)}</div>'
             f'<div class="{dir_class}">{dir_label} {edge_pp}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
@@ -1188,11 +1209,18 @@ elif page_id == "champ":
 
     with st.expander(t("full_table")):
         show = probs.copy()
-        show["team"] = show["team"].apply(team_with_flag)
+        show["flag"] = show["team"].apply(lambda tm: flag_url(tm, "w80") or "")
+        show["team_disp"] = show["team"].apply(team_name)
         st.dataframe(
-            show[["team", "p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]]
-            .style.format({c: "{:.1%}" for c in ["p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]}),
+            show[["flag", "team_disp", "p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]],
             use_container_width=True,
+            hide_index=True,
+            column_config={
+                "flag": st.column_config.ImageColumn("Flag", width="small"),
+                "team_disp": st.column_config.TextColumn(t("whatif_col_team")),
+                **{c: st.column_config.NumberColumn(c, format="percent")
+                   for c in ["p_R32", "p_R16", "p_QF", "p_SF", "p_F", "p_W"]},
+            },
         )
 
 
@@ -1238,7 +1266,7 @@ elif page_id == "misp":
         rows_html += (
             f'<div class="mis-row">'
             f'<div class="rank">#{int(r["rank"])}</div>'
-            f'<div class="team">{team_with_flag(r["team"])}</div>'
+            f'<div class="team">{team_with_flag_img(r["team"], h=16)}</div>'
             f'<div class="{dir_class}">{dir_label}</div>'
             f'<div>{r["p_W"]*100:.1f}%</div>'
             f'<div>{r["market_p_W"]*100:.1f}%</div>'
@@ -1664,11 +1692,11 @@ elif page_id == "groups":
                     row_class = ""
                 else:
                     row_class = "out"
-                emoji = flag(t_name_en)
+                img = flag_img(t_name_en, h=14)
                 localized = team_name(t_name_en)
                 rows += (
                     f'<tr class="{row_class}">'
-                    f'<td class="team">{emoji} {localized}</td>'
+                    f'<td class="team">{img} {localized}</td>'
                     f'<td class="prob">{p*100:.0f}%</td>'
                     f"</tr>"
                 )
@@ -1714,8 +1742,8 @@ elif page_id == "schedule":
                 day_label = d.strftime("%a · %b %d")  # "Thu · Jun 11"
                 html_blocks.append(f'<div class="sch-day">{day_label}</div>')
                 current_date = d.date()
-            home = team_with_flag(r["home_team"])
-            away = team_with_flag(r["away_team"])
+            home = team_with_flag_img(r["home_team"], h=14)
+            away = team_with_flag_img(r["away_team"], h=14)
             grp_letter = team_to_group.get(r["home_team"], "?")
             grp_chip = t("sch_grp", letter=grp_letter)
             stadium = r.get("stadium", "—")
@@ -1764,7 +1792,7 @@ elif page_id == "explorer":
     g_letter = _team_group(team, groups_df)
     if g_letter:
         mates = groups_df[(groups_df["group"] == g_letter) & (groups_df["team"] != team)]
-        mate_names = " · ".join(team_with_flag(t) for t in mates["team"].tolist())
+        mate_names = " · ".join(team_with_flag_img(t, h=14) for t in mates["team"].tolist())
         st.markdown(
             f'<div class="wc-hint">🏟️ <b>Group {g_letter}</b> · '
             f'with {mate_names}</div>',
