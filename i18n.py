@@ -1,4 +1,4 @@
-"""i18n — 5-language translation dictionary + helper for WorldCup26IQ."""
+"""i18n — 5-language translation dictionary + helper for WorldCup26AI."""
 from __future__ import annotations
 
 import streamlit as st
@@ -89,11 +89,11 @@ def team_name(english: str) -> str:
 
 T: dict[str, dict[str, str]] = {
     # ---------- sidebar ----------
-    "app_title":    {"en": "⚽ WorldCup26IQ",
-                     "zh": "⚽ WorldCup26IQ",
-                     "es": "⚽ WorldCup26IQ",
-                     "pt": "⚽ WorldCup26IQ",
-                     "fr": "⚽ WorldCup26IQ"},
+    "app_title":    {"en": "⚽ WorldCup26AI",
+                     "zh": "⚽ WorldCup26AI",
+                     "es": "⚽ WorldCup26AI",
+                     "pt": "⚽ WorldCup26AI",
+                     "fr": "⚽ WorldCup26AI"},
     "app_tagline":  {"en": "Dixon-Coles + Monte Carlo for the 2026 FIFA World Cup.",
                      "zh": "2026 世界杯的 Dixon-Coles + 蒙特卡洛模型。",
                      "es": "Dixon-Coles + Monte Carlo para la Copa Mundial 2026.",

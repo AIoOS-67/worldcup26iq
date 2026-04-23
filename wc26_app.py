@@ -1,5 +1,5 @@
 """
-WorldCup26IQ — Streamlit app for the 2026 FIFA World Cup model.
+WorldCup26AI — Streamlit app for the 2026 FIFA World Cup model.
 
 Self-contained for Streamlit Cloud deploy. Reads parquet files from `./data/`
 or the script directory.
@@ -296,7 +296,7 @@ def merch_link(team: str, kind: str = "jersey") -> str:
 
 # ---------- global config + CSS ----------
 st.set_page_config(
-    page_title="WorldCup26IQ",
+    page_title="WorldCup26AI",
     page_icon="⚽",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -333,7 +333,7 @@ _components.html(
           [
             ['apple-mobile-web-app-capable',          'yes'],
             ['apple-mobile-web-app-status-bar-style', 'black-translucent'],
-            ['apple-mobile-web-app-title',            'WC26IQ'],
+            ['apple-mobile-web-app-title',            'WC26AI'],
             ['mobile-web-app-capable',                'yes'],
           ].forEach(([name, content]) => {
             ensure(`meta[name="${name}"]`, () => {

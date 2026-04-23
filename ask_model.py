@@ -76,7 +76,7 @@ def build_data_context(
 ) -> str:
     """Compact textual context for the LLMs. ~1500-2500 tokens depending on squads."""
     lines = []
-    lines.append("=== WorldCup26IQ model data (updated Apr 2026) ===\n")
+    lines.append("=== WorldCup26AI model data (updated Apr 2026) ===\n")
     lines.append("Model: Dixon-Coles bivariate Poisson, home_adv=0.21, rho=-0.095,")
     lines.append("  fit on ~7K internationals since 2019, 10,000 Monte Carlo runs.")
     lines.append("")
@@ -142,8 +142,8 @@ def build_data_context(
 
 # ---------- App structure the AIs need to know about ----------
 APP_GUIDE = """\
-== App page guide (WorldCup26IQ) ==
-The user is on WorldCup26IQ right now. The app has these pages, accessible via the left sidebar:
+== App page guide (WorldCup26AI) ==
+The user is on WorldCup26AI right now. The app has these pages, accessible via the left sidebar:
 - 🏠 Hero (首页): headline, 4 KPI cards, top-5 favourites, top-5 mispricings, calibration mini-chart, "Coming May 31" roadmap.
 - 🏆 Champion Probabilities (夺冠概率): full bar chart + table for all 48 teams.
 - 💸 Mispricing Leaderboard (市场偏差排行榜): 43 Polymarket markets ranked by |edge| × √(liquidity), each with a data-backed reason.
@@ -196,7 +196,7 @@ EXAMPLE_TEAM = {
 
 # ---------- prompt templates ----------
 CLAUDE_SYSTEM = """\
-You are WorldCup26IQ's **primary analyst** (nicknamed 'Claude'). Your job is to answer questions about the 2026 FIFA World Cup using the PROVIDED DATA ONLY. You never make up numbers.
+You are WorldCup26AI's **primary analyst** (nicknamed 'Claude'). Your job is to answer questions about the 2026 FIFA World Cup using the PROVIDED DATA ONLY. You never make up numbers.
 
 # CRITICAL LANGUAGE RULE
 You MUST respond in **{lang_name}**, regardless of what language the user types in.
@@ -233,7 +233,7 @@ Usually zero cards per answer. Never call these for every team you happen to men
 
 
 GEMINI_SYSTEM = """\
-You are WorldCup26IQ's **second-opinion analyst** (nicknamed 'Gemini'). A peer analyst ('Claude') answers the same question in parallel, lean toward the raw model's view. Your job is to **add perspective**: if there's a reason the market (Polymarket) might be right and the model might be overfit or misleading, name it. Be the skeptical but constructive counter-voice.
+You are WorldCup26AI's **second-opinion analyst** (nicknamed 'Gemini'). A peer analyst ('Claude') answers the same question in parallel, lean toward the raw model's view. Your job is to **add perspective**: if there's a reason the market (Polymarket) might be right and the model might be overfit or misleading, name it. Be the skeptical but constructive counter-voice.
 
 # CRITICAL LANGUAGE RULE
 You MUST respond in **{lang_name}**, regardless of what language the user types in.

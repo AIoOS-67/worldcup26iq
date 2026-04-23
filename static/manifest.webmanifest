@@ -1,6 +1,6 @@
 {
-  "name": "WorldCup26IQ",
-  "short_name": "WC26IQ",
+  "name": "WorldCup26AI",
+  "short_name": "WC26AI",
   "description": "Dixon-Coles + Monte Carlo model for the 2026 FIFA World Cup, with a live Polymarket mispricing leaderboard and dual-AI chat.",
   "start_url": "./",
   "scope": "./",

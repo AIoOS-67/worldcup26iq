@@ -1,4 +1,4 @@
-# WorldCup26IQ
+# WorldCup26AI
 
 Dixon-Coles + Monte Carlo model for the 2026 FIFA World Cup, with a live
 mispricing leaderboard against Polymarket winner markets.
