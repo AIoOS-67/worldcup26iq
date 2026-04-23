@@ -12,6 +12,8 @@ Keys are read from Streamlit secrets or env vars:
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -212,8 +214,13 @@ The UI language setting is the ONLY source of truth for your output language.
 - If the team is not in the data, say so plainly. If asked about a player and the team IS in the curated 11, use the data. Otherwise say squads arrive May 31.
 - Lean toward the model's quantitative view — that's your role.
 
-# Optional: team merch recommendations
-You have a `recommend_team_merch` tool that appends a shoppable card (crest + home jersey + outbound link) below your written reply. Use it only when showing the team's visuals genuinely adds to the conversation — fan affinity signals, "who should I follow / support / root for" questions, dark-horse picks the user might want to get behind. Pass a short one-sentence `pitch` explaining why in the user's language. Usually zero cards per answer. Never call the tool for every team you happen to mention, and never force a recommendation into an otherwise-analytical reply.
+# Optional: team merch recommendations (agentic)
+You have two merch-related tools you may use in combination:
+
+1. `check_team_merch_pricing(team)` — look up list price, any active sale, and promo codes for that team's official home jersey. Call it FIRST when the user shows price sensitivity ("cheap" / "expensive" / "deal" / "折扣" / "便宜") or is explicitly shopping. Incorporate meaningful discounts naturally into your reply ("their shirt is currently 22% off at $76 with code WC26OFF").
+2. `recommend_team_merch(team, pitch)` — appends a shoppable card (crest + home jersey + outbound link) below your written reply. Call it when showing the team's visuals genuinely adds to the conversation — fan affinity signals, "who should I follow / support / root for" questions, dark-horse picks. Pass a short one-sentence `pitch` in the user's language. If you already called `check_team_merch_pricing` for the same team in this turn, the card automatically picks up the SALE badge / promo code — you don't need to repeat them.
+
+Usually zero cards per answer. Never call these for every team you happen to mention. Never force a recommendation into an otherwise-analytical reply.
 
 # TEAM NAME TABLE ({lang_name})
 {team_table}
@@ -281,7 +288,10 @@ MERCH_TOOL = {
         "when the user is asking a purely analytical question ('Why is X "
         "undervalued?') unless showing the kit genuinely fits the answer.\n\n"
         "Usually 0 cards per response. At most one, or two if the user is "
-        "asking to compare / pick between two specific teams."
+        "asking to compare / pick between two specific teams.\n\n"
+        "If you've already called check_team_merch_pricing for this team "
+        "during the current turn, the card will automatically pick up the "
+        "sale price / promo code — you don't need to pass them here."
     ),
     "input_schema": {
         "type": "object",
@@ -305,15 +315,90 @@ MERCH_TOOL = {
 }
 
 
-# ---------- Claude ----------
-def ask_claude(question: str, context: str, lang: str) -> dict:
-    """Return {'text': str, 'merch': list[{'team','pitch'}]}.
+PRICING_TOOL = {
+    "name": "check_team_merch_pricing",
+    "description": (
+        "Look up current listed price, any active sale, and promo codes for "
+        "a team's official home jersey on our Fanatics product feed. Returns "
+        "{list_price, sale_price?, discount_pct?, sale_ends_hours?, "
+        "promo_code?, promo_discount_pct?, currency}.\n\n"
+        "Call this when:\n"
+        "- The user shows price sensitivity ('cheap', 'expensive', 'deal', "
+        "'on sale', 'discount', 'budget', '便宜', '贵', '折扣')\n"
+        "- The user explicitly asks about buying / ordering / price / cost\n"
+        "- You're about to call recommend_team_merch AND want to anchor "
+        "the pitch with a concrete price or active discount\n\n"
+        "After calling this, incorporate any meaningful discount or promo "
+        "code naturally into your written reply (don't just dump the JSON). "
+        "If there's no sale, you may still mention the list price OR just "
+        "skip pricing talk — trust your judgment.\n\n"
+        "Do NOT call this more than once per team per turn. Do NOT call it "
+        "when the user is asking a purely analytical question."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "team": {
+                "type": "string",
+                "enum": WC26_TEAMS,
+                "description": "The team whose jersey pricing to look up.",
+            },
+        },
+        "required": ["team"],
+    },
+}
 
-    Claude may optionally call recommend_team_merch tool — when it does,
-    we surface those decisions as structured recs that the UI renders as
-    shoppable cards. We do NOT round-trip back to Claude with tool_result;
-    the tool is used purely as a structured "intent" marker in the first
-    response turn.
+
+def _mock_pricing(team: str) -> dict:
+    """Deterministic demo pricing — seeded from the team name so each team has
+    a stable price / sale / promo profile across sessions.
+
+    When the real affiliate Product Feed is wired in (Awin / Impact / ShareASale
+    for Fanatics), swap this function's body for a lookup against that data
+    source. The tool schema and render path stay identical."""
+    h = int(hashlib.sha256(team.encode("utf-8")).hexdigest()[:10], 16)
+    base = 89 + (h % 41)  # $89 – $129
+    is_sale = (h % 10) < 3  # 30% of teams
+    has_promo = ((h >> 8) % 10) < 2  # 20% of teams
+
+    out: dict = {
+        "team": team,
+        "currency": "USD",
+        "list_price": base,
+    }
+    if is_sale:
+        discount = 15 + ((h >> 4) % 20)  # 15–34% off
+        sale = round(base * (100 - discount) / 100)
+        out["sale_price"] = sale
+        out["discount_pct"] = discount
+        out["sale_ends_hours"] = 12 + ((h >> 12) % 36)  # 12–47h countdown
+    if has_promo:
+        out["promo_code"] = "WC26OFF"
+        out["promo_discount_pct"] = 10
+    out["_note"] = (
+        "Demo pricing — seeded sample data, not a live Fanatics feed. "
+        "Will swap to real Awin/Impact product feed after affiliate approval."
+    )
+    return out
+
+
+# ---------- Claude ----------
+MAX_AGENT_STEPS = 4  # safety bound on tool-use rounds per user turn
+
+
+def ask_claude(question: str, context: str, lang: str) -> dict:
+    """Return {'text': str, 'merch': list[{team, pitch, pricing?}]}.
+
+    Runs an agentic loop: Claude may call check_team_merch_pricing
+    (receiving real tool_result data back so it can reason with the
+    numbers on the NEXT turn), and/or recommend_team_merch (a display-
+    only marker that ends up on the rendered card). The loop terminates
+    when Claude stops emitting tool_use blocks OR MAX_AGENT_STEPS is hit.
+
+    Pricing looked up for a team during this turn is automatically merged
+    into any merch rec for the same team — so the rendered card shows
+    SALE badge / promo code without Claude having to pass the fields
+    twice.
     """
     api_key = _get_anthropic_key()
     if not api_key:
@@ -327,30 +412,80 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
         example_team=EXAMPLE_TEAM.get(lang, EXAMPLE_TEAM["en"]),
         app_guide=APP_GUIDE,
     )
-    resp = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS,
-        system=[
-            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
-        ],
-        tools=[MERCH_TOOL],
-        messages=[{"role": "user", "content": question}],
-    )
-    parts: list[str] = []
-    merch: list[dict] = []
-    for block in resp.content:
-        btype = getattr(block, "type", None)
-        if btype == "text":
-            parts.append(block.text)
-        elif btype == "tool_use" and getattr(block, "name", "") == "recommend_team_merch":
-            inp = getattr(block, "input", None) or {}
+
+    messages: list[dict] = [{"role": "user", "content": question}]
+    text_parts: list[str] = []
+    merch_recs: list[dict] = []
+    pricing_cache: dict[str, dict] = {}
+
+    for _ in range(MAX_AGENT_STEPS):
+        resp = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS,
+            system=[
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
+            ],
+            tools=[MERCH_TOOL, PRICING_TOOL],
+            messages=messages,
+        )
+
+        tool_uses = []
+        for block in resp.content:
+            btype = getattr(block, "type", None)
+            if btype == "text":
+                text_parts.append(block.text)
+            elif btype == "tool_use":
+                tool_uses.append(block)
+
+        # No tools called → Claude is done.
+        if resp.stop_reason != "tool_use" or not tool_uses:
+            break
+
+        # Record assistant turn (pass content blocks back verbatim).
+        messages.append({"role": "assistant", "content": resp.content})
+
+        # Execute each tool, collect results.
+        tool_results = []
+        for tu in tool_uses:
+            name = getattr(tu, "name", "")
+            inp = getattr(tu, "input", None) or {}
             team = inp.get("team")
-            pitch = inp.get("pitch", "")
-            if team and team in WC26_TEAMS:
-                merch.append({"team": team, "pitch": pitch})
+
+            if name == "check_team_merch_pricing" and team in WC26_TEAMS:
+                pricing = _mock_pricing(team)
+                pricing_cache[team] = pricing
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": json.dumps(pricing),
+                })
+            elif name == "recommend_team_merch" and team in WC26_TEAMS:
+                pitch = inp.get("pitch", "")
+                merch_recs.append({"team": team, "pitch": pitch})
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": json.dumps({"status": "card_will_be_displayed"}),
+                })
+            else:
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": json.dumps({"error": f"unknown tool or invalid team: {name}"}),
+                    "is_error": True,
+                })
+
+        messages.append({"role": "user", "content": tool_results})
+
+    # Attach any pricing we picked up during this turn to matching merch recs.
+    for rec in merch_recs:
+        p = pricing_cache.get(rec["team"])
+        if p:
+            rec["pricing"] = p
+
     return {
-        "text": "".join(parts) or "(empty response)",
-        "merch": merch,
+        "text": "".join(text_parts) or "(empty response)",
+        "merch": merch_recs,
     }
 
 

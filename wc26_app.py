@@ -40,7 +40,11 @@ except ImportError:
 
 def _render_merch_card(rec: dict) -> str:
     """Inline shoppable card — smaller than Team Explorer version, designed to
-    slot inside a chat bubble below Claude's text."""
+    slot inside a chat bubble below Claude's text.
+
+    If rec carries a 'pricing' dict (populated when Claude called
+    check_team_merch_pricing for the same team), show a SALE badge,
+    strikethrough list price, sale price, and any promo code."""
     # Delayed import: these helpers live further down in this module. This
     # function is called only after the module is fully loaded (from the
     # chat render path), so the lookups resolve by then.
@@ -50,6 +54,8 @@ def _render_merch_card(rec: dict) -> str:
     shop_url = globals()["merch_link"](rec["team"])
     localized = globals()["team_name"](rec["team"])
     pitch = rec.get("pitch", "")
+    pricing = rec.get("pricing") or {}
+
     badge_html = (
         f'<img src="{media["badge"]}" alt="{rec["team"]} crest" '
         f'style="height:56px;width:56px;object-fit:contain;flex-shrink:0;">'
@@ -61,16 +67,70 @@ def _render_merch_card(rec: dict) -> str:
         f'background:rgba(255,255,255,0.04);border-radius:4px;padding:4px;">'
         if media.get("jersey") else ""
     )
+
+    # Pricing strip — only rendered when pricing was looked up this turn
+    price_html = ""
+    sale_pill = ""
+    disclaimer = ""
+    if pricing:
+        currency = "$" if pricing.get("currency") == "USD" else ""
+        list_p = pricing.get("list_price")
+        sale_p = pricing.get("sale_price")
+        if sale_p and list_p and sale_p < list_p:
+            sale_pill = (
+                f'<span style="background:#ef4444;color:#fff;font-size:0.7rem;'
+                f'font-weight:700;padding:2px 8px;border-radius:10px;'
+                f'margin-left:8px;letter-spacing:0.5px;">'
+                f'SALE −{pricing.get("discount_pct", 0)}%</span>'
+            )
+            countdown = pricing.get("sale_ends_hours")
+            countdown_html = (
+                f'<span style="color:#94a3c5;font-size:0.72rem;margin-left:8px;">'
+                f'ends in {countdown}h</span>' if countdown else ""
+            )
+            price_html = (
+                f'<div style="margin-top:4px;font-size:0.85rem;">'
+                f'<span style="color:#94a3c5;text-decoration:line-through;">'
+                f'{currency}{list_p}</span> '
+                f'<span style="color:#3dd68c;font-weight:700;">'
+                f'{currency}{sale_p}</span>'
+                f'{countdown_html}</div>'
+            )
+        elif list_p:
+            price_html = (
+                f'<div style="margin-top:4px;font-size:0.85rem;color:#cfd7e8;">'
+                f'{currency}{list_p}</div>'
+            )
+        promo = pricing.get("promo_code")
+        if promo:
+            price_html += (
+                f'<div style="margin-top:4px;font-size:0.78rem;color:#cfd7e8;">'
+                f'Code <code style="background:rgba(247,201,72,0.15);'
+                f'color:#f7c948;padding:1px 6px;border-radius:3px;'
+                f'font-weight:600;">{promo}</code> '
+                f'= extra −{pricing.get("promo_discount_pct", 0)}%</div>'
+            )
+        disclaimer = (
+            '<div style="margin-top:6px;font-size:0.68rem;color:#5b6c8a;'
+            'font-style:italic;">Demo pricing — will swap to live feed after '
+            'affiliate approval.</div>'
+        )
+
+    border_color = "rgba(239,68,68,0.5)" if sale_pill else "rgba(247,201,72,0.3)"
+    bg_color = "rgba(239,68,68,0.06)" if sale_pill else "rgba(247,201,72,0.08)"
+
     return (
         f'<a href="{shop_url}" target="_blank" rel="noopener sponsored" '
         f'style="display:flex;gap:12px;align-items:center;margin-top:10px;'
-        f'padding:10px 12px;background:rgba(247,201,72,0.08);'
-        f'border:1px solid rgba(247,201,72,0.3);border-radius:8px;'
+        f'padding:10px 12px;background:{bg_color};'
+        f'border:1px solid {border_color};border-radius:8px;'
         f'text-decoration:none;color:inherit;">'
         f'{badge_html}{jersey_html}'
         f'<div style="flex:1;min-width:0;">'
-        f'<div style="font-weight:600;color:#f7c948;font-size:0.95rem;">🛒 {localized}</div>'
+        f'<div style="font-weight:600;color:#f7c948;font-size:0.95rem;">'
+        f'🛒 {localized}{sale_pill}</div>'
         f'<div style="font-size:0.82rem;color:#cfd7e8;margin-top:2px;">{pitch}</div>'
+        f'{price_html}{disclaimer}'
         f'</div></a>'
     )
 
