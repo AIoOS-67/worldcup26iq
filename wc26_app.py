@@ -783,6 +783,10 @@ def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
     team_to_group = {t: g for g, ts in groups.items() for t in ts}
     all_teams = sorted(team_to_group)
     counts = {t: [0] * len(STAGES) for t in all_teams}
+    third_pos_ct = {t: 0 for t in all_teams}   # times team finished 3rd in group
+    third_adv_ct = {t: 0 for t in all_teams}   # times team advanced as one of the top 8 thirds
+    third_pts_sum = {t: 0 for t in all_teams}  # sum pts when 3rd (for averaging)
+    third_gd_sum = {t: 0 for t in all_teams}   # sum goal diff when 3rd
 
     for _sim in range(n_sims):
         tables = {g: {t: {"pts": 0, "gf": 0, "ga": 0} for t in ts} for g, ts in groups.items()}
@@ -808,35 +812,51 @@ def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
             # Apply locks for this group
             lk = locks.get(gkey, {})
             ordered_teams = [t for t, _ in ordered]
-            # Reorder: locked 1st, locked 2nd, then remaining in natural order
             final = [None, None]
             remaining = list(ordered_teams)
+            # Pull locked teams out of remaining first (so they don't double-slot)
+            for slot in ("1st", "2nd", "3rd"):
+                if slot in lk and lk[slot] in remaining:
+                    remaining.remove(lk[slot])
             if "1st" in lk:
                 final[0] = lk["1st"]
-                if lk["1st"] in remaining:
-                    remaining.remove(lk["1st"])
             if "2nd" in lk:
                 final[1] = lk["2nd"]
-                if lk["2nd"] in remaining:
-                    remaining.remove(lk["2nd"])
-            # Fill unlocked slots with natural top of remaining
+            # Fill unlocked 1st/2nd slots with natural top of remaining
             for pos in range(2):
                 if final[pos] is None:
                     final[pos] = remaining.pop(0)
-            # 3rd and 4th from whatever's left, natural order
-            third = remaining[0] if remaining else None
-            fourth = remaining[1] if len(remaining) > 1 else None
+            # 3rd: locked team wins, else natural top of remaining
+            if "3rd" in lk:
+                third = lk["3rd"]
+            else:
+                third = remaining[0] if remaining else None
             first_place.append((gkey, final[0], tables[gkey][final[0]]))
             second_place.append((gkey, final[1], tables[gkey][final[1]]))
             if third:
                 third_place.append((gkey, third, tables[gkey][third]))
+                t_stats = tables[gkey][third]
+                third_pos_ct[third] += 1
+                third_pts_sum[third] += t_stats["pts"]
+                third_gd_sum[third] += t_stats["gf"] - t_stats["ga"]
 
         third_sorted = sorted(
             third_place,
             key=lambda t: (t[2]["pts"], t[2]["gf"] - t[2]["ga"], t[2]["gf"], rng.random()),
             reverse=True,
         )
-        third_adv = [t for (_, t, _) in third_sorted[:8]]
+        # Any team the user locked as 3rd gets guaranteed advancement;
+        # remaining slots filled by natural top-ranked 3rds.
+        locked_thirds = [lk["3rd"] for lk in locks.values() if "3rd" in lk]
+        natural_order = [t for (_, t, _) in third_sorted]
+        third_adv = list(locked_thirds)
+        for t in natural_order:
+            if len(third_adv) >= 8:
+                break
+            if t not in third_adv:
+                third_adv.append(t)
+        for t in third_adv:
+            third_adv_ct[t] += 1
 
         r32 = [t for (_, t, _) in first_place] + [t for (_, t, _) in second_place] + third_adv
         reached = {t: "group" for t in all_teams}
@@ -865,9 +885,14 @@ def run_whatif(groups: dict, fixtures: pd.DataFrame, locks: dict,
 
     rows = []
     for team in all_teams:
-        row = {"team": team}
+        row = {"team": team, "group": team_to_group[team]}
         for k, s in enumerate(STAGES):
             row[f"p_{s}"] = counts[team][k] / n_sims
+        pos_ct = third_pos_ct[team]
+        row["p_third_pos"] = pos_ct / n_sims
+        row["p_third_adv"] = third_adv_ct[team] / n_sims
+        row["third_avg_pts"] = (third_pts_sum[team] / pos_ct) if pos_ct else float("nan")
+        row["third_avg_gd"] = (third_gd_sum[team] / pos_ct) if pos_ct else float("nan")
         rows.append(row)
     return pd.DataFrame(rows).sort_values("p_W", ascending=False).reset_index(drop=True)
 
@@ -1227,8 +1252,9 @@ elif page_id == "whatif":
         unsafe_allow_html=True,
     )
 
-    # Cycle: unset → 🏆 (1st) → 🥈 (2nd) → unset. Selecting a slot
+    # Cycle: unset → 🏆 (1st) → 🥈 (2nd) → 🥉 (3rd) → unset. Selecting a slot
     # displaces any other team already in that slot for the same group.
+    # 3rd-placed teams advance only if among top 8 across all 12 groups.
     def _cycle_lock(gkey: str, team: str):
         locks = st.session_state["wc26_locks"].setdefault(gkey, {})
         if locks.get("1st") == team:
@@ -1236,6 +1262,9 @@ elif page_id == "whatif":
             locks["2nd"] = team
         elif locks.get("2nd") == team:
             locks.pop("2nd", None)
+            locks["3rd"] = team
+        elif locks.get("3rd") == team:
+            locks.pop("3rd", None)
         else:
             locks["1st"] = team
         if not locks:
@@ -1254,6 +1283,8 @@ elif page_id == "whatif":
                         badge, btn_type = "🏆", "primary"
                     elif locks.get("2nd") == tm:
                         badge, btn_type = "🥈", "primary"
+                    elif locks.get("3rd") == tm:
+                        badge, btn_type = "🥉", "primary"
                     else:
                         badge, btn_type = "　", "secondary"
                     label = f"{badge} {flag(tm)} {team_name(tm)}"
@@ -1300,6 +1331,46 @@ elif page_id == "whatif":
             unsafe_allow_html=True,
         )
         st.markdown(render_bracket(res), unsafe_allow_html=True)
+
+        # 3rd-place advancers — demystify the 8-from-12 rule
+        st.markdown(
+            f'<div class="section-title" style="font-size:1.1rem;margin-top:16px;">{t("whatif_thirds")}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<p class="section-caption" style="font-size:0.85rem;">{t("whatif_thirds_caption")}</p>',
+            unsafe_allow_html=True,
+        )
+        locked_thirds_set = {lk["3rd"] for lk in new_locks.values() if "3rd" in lk}
+        thirds = res[res["p_third_pos"] > 0].copy()
+        thirds = thirds.sort_values("p_third_adv", ascending=False).head(12)
+        thirds["team_disp"] = thirds["team"].apply(
+            lambda tm: f"🔒 {team_with_flag(tm)}" if tm in locked_thirds_set else team_with_flag(tm)
+        )
+        thirds_view = thirds[[
+            "team_disp", "group", "p_third_pos", "p_third_adv",
+            "third_avg_pts", "third_avg_gd",
+        ]].rename(columns={
+            "team_disp": t("whatif_col_team"),
+            "group": t("whatif_col_group"),
+            "p_third_pos": t("whatif_col_p_third"),
+            "p_third_adv": t("whatif_col_p_adv"),
+            "third_avg_pts": t("whatif_col_avg_pts"),
+            "third_avg_gd": t("whatif_col_avg_gd"),
+        })
+        st.dataframe(
+            thirds_view.style.format({
+                t("whatif_col_p_third"): "{:.1%}",
+                t("whatif_col_p_adv"): "{:.1%}",
+                t("whatif_col_avg_pts"): "{:.2f}",
+                t("whatif_col_avg_gd"): "{:+.2f}",
+            }).bar(
+                subset=[t("whatif_col_p_adv")],
+                color="#f7c948", vmin=0, vmax=1,
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
         top = res.head(15).copy()
         top["label"] = top["team"].apply(team_with_flag)
