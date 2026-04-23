@@ -38,8 +38,50 @@ except ImportError:
         return escaped.replace("\n\n", "</p><p>").replace("\n", "<br>")
 
 
-def _render_msg(role: str, content: str) -> str:
-    """Return HTML for a single WeChat-style message."""
+def _render_merch_card(rec: dict) -> str:
+    """Inline shoppable card — smaller than Team Explorer version, designed to
+    slot inside a chat bubble below Claude's text."""
+    # Delayed import: these helpers live further down in this module. This
+    # function is called only after the module is fully loaded (from the
+    # chat render path), so the lookups resolve by then.
+    media = globals()["load_team_media"]().get(rec["team"], {})
+    if not (media.get("badge") or media.get("jersey")):
+        return ""
+    shop_url = globals()["merch_link"](rec["team"])
+    localized = globals()["team_name"](rec["team"])
+    pitch = rec.get("pitch", "")
+    badge_html = (
+        f'<img src="{media["badge"]}" alt="{rec["team"]} crest" '
+        f'style="height:56px;width:56px;object-fit:contain;flex-shrink:0;">'
+        if media.get("badge") else ""
+    )
+    jersey_html = (
+        f'<img src="{media["jersey"]}" alt="{rec["team"]} jersey" '
+        f'style="height:88px;width:auto;flex-shrink:0;'
+        f'background:rgba(255,255,255,0.04);border-radius:4px;padding:4px;">'
+        if media.get("jersey") else ""
+    )
+    return (
+        f'<a href="{shop_url}" target="_blank" rel="noopener sponsored" '
+        f'style="display:flex;gap:12px;align-items:center;margin-top:10px;'
+        f'padding:10px 12px;background:rgba(247,201,72,0.08);'
+        f'border:1px solid rgba(247,201,72,0.3);border-radius:8px;'
+        f'text-decoration:none;color:inherit;">'
+        f'{badge_html}{jersey_html}'
+        f'<div style="flex:1;min-width:0;">'
+        f'<div style="font-weight:600;color:#f7c948;font-size:0.95rem;">🛒 {localized}</div>'
+        f'<div style="font-size:0.82rem;color:#cfd7e8;margin-top:2px;">{pitch}</div>'
+        f'</div></a>'
+    )
+
+
+def _render_msg(role: str, content) -> str:
+    """Return HTML for a single WeChat-style message.
+
+    `content` is a str for most roles. For claude it may also be a dict
+    shaped like {'text': str, 'merch': [{'team','pitch'}, ...]} — in that
+    case we render the text as markdown and append merch cards below.
+    """
     if role == "user":
         avatar, name, cls = "🧑", "You", "user"
     elif role == "claude":
@@ -61,11 +103,18 @@ def _render_msg(role: str, content: str) -> str:
     else:
         avatar, name, cls = "⚠️", "System", "error"
 
-    html_content = _md_to_html(content)
+    if isinstance(content, dict):
+        text = content.get("text", "")
+        merch = content.get("merch", []) or []
+    else:
+        text = content
+        merch = []
+    html_content = _md_to_html(text)
+    merch_html = "".join(_render_merch_card(m) for m in merch)
     return (
         f'<div class="wc-row {cls}"><div class="wc-avatar">{avatar}</div>'
         f'<div class="wc-bwrap"><div class="wc-name">{name}</div>'
-        f'<div class="wc-bubble {cls}">{html_content}</div></div></div>'
+        f'<div class="wc-bubble {cls}">{html_content}{merch_html}</div></div></div>'
     )
 
 

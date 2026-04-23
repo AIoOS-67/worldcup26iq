@@ -212,6 +212,9 @@ The UI language setting is the ONLY source of truth for your output language.
 - If the team is not in the data, say so plainly. If asked about a player and the team IS in the curated 11, use the data. Otherwise say squads arrive May 31.
 - Lean toward the model's quantitative view — that's your role.
 
+# Optional: team merch recommendations
+You have a `recommend_team_merch` tool that appends a shoppable card (crest + home jersey + outbound link) below your written reply. Use it only when showing the team's visuals genuinely adds to the conversation — fan affinity signals, "who should I follow / support / root for" questions, dark-horse picks the user might want to get behind. Pass a short one-sentence `pitch` explaining why in the user's language. Usually zero cards per answer. Never call the tool for every team you happen to mention, and never force a recommendation into an otherwise-analytical reply.
+
 # TEAM NAME TABLE ({lang_name})
 {team_table}
 
@@ -251,8 +254,67 @@ The UI language setting is the ONLY source of truth for your output language.
 """
 
 
+# ---------- Claude tool: shoppable team card ----------
+# Official WC 2026 teams (48), kept in sync with data/team_media.json.
+WC26_TEAMS = [
+    "Algeria", "Argentina", "Australia", "Austria", "Belgium",
+    "Bosnia and Herzegovina", "Brazil", "Canada", "Cape Verde", "Colombia",
+    "Croatia", "Curaçao", "Czech Republic", "DR Congo", "Ecuador",
+    "Egypt", "England", "France", "Germany", "Ghana", "Haiti", "Iran",
+    "Iraq", "Ivory Coast", "Japan", "Jordan", "Mexico", "Morocco",
+    "Netherlands", "New Zealand", "Norway", "Panama", "Paraguay",
+    "Portugal", "Qatar", "Saudi Arabia", "Scotland", "Senegal",
+    "South Africa", "South Korea", "Spain", "Sweden", "Switzerland",
+    "Tunisia", "Turkey", "United States", "Uruguay", "Uzbekistan",
+]
+
+MERCH_TOOL = {
+    "name": "recommend_team_merch",
+    "description": (
+        "Display a shoppable card below your answer with the team's crest, "
+        "home jersey, and an outbound link to their official gear. Call this "
+        "tool when showing the team's visuals would genuinely add to the "
+        "conversation — e.g. the user expresses fan affinity, asks for a "
+        "team to 'follow' / 'support' / 'bet on', or you're highlighting a "
+        "dark horse the user might want to get behind.\n\n"
+        "Do NOT call it for every team mentioned in passing. Do NOT call it "
+        "when the user is asking a purely analytical question ('Why is X "
+        "undervalued?') unless showing the kit genuinely fits the answer.\n\n"
+        "Usually 0 cards per response. At most one, or two if the user is "
+        "asking to compare / pick between two specific teams."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "team": {
+                "type": "string",
+                "enum": WC26_TEAMS,
+                "description": "The team to show merchandise for (English canonical name).",
+            },
+            "pitch": {
+                "type": "string",
+                "description": (
+                    "A single short sentence in the response language (the user's UI "
+                    "language) explaining WHY the user might want to check out this "
+                    "team's gear. Under 20 words. No generic ad-speak."
+                ),
+            },
+        },
+        "required": ["team", "pitch"],
+    },
+}
+
+
 # ---------- Claude ----------
-def ask_claude(question: str, context: str, lang: str) -> str:
+def ask_claude(question: str, context: str, lang: str) -> dict:
+    """Return {'text': str, 'merch': list[{'team','pitch'}]}.
+
+    Claude may optionally call recommend_team_merch tool — when it does,
+    we surface those decisions as structured recs that the UI renders as
+    shoppable cards. We do NOT round-trip back to Claude with tool_result;
+    the tool is used purely as a structured "intent" marker in the first
+    response turn.
+    """
     api_key = _get_anthropic_key()
     if not api_key:
         raise RuntimeError("NO_CLAUDE_KEY")
@@ -271,13 +333,25 @@ def ask_claude(question: str, context: str, lang: str) -> str:
         system=[
             {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}},
         ],
+        tools=[MERCH_TOOL],
         messages=[{"role": "user", "content": question}],
     )
-    parts = []
+    parts: list[str] = []
+    merch: list[dict] = []
     for block in resp.content:
-        if getattr(block, "type", None) == "text":
+        btype = getattr(block, "type", None)
+        if btype == "text":
             parts.append(block.text)
-    return "".join(parts) or "(empty response)"
+        elif btype == "tool_use" and getattr(block, "name", "") == "recommend_team_merch":
+            inp = getattr(block, "input", None) or {}
+            team = inp.get("team")
+            pitch = inp.get("pitch", "")
+            if team and team in WC26_TEAMS:
+                merch.append({"team": team, "pitch": pitch})
+    return {
+        "text": "".join(parts) or "(empty response)",
+        "merch": merch,
+    }
 
 
 # ---------- Gemini ----------
@@ -343,7 +417,7 @@ def parse_routing(question: str) -> tuple[str, str]:
 
 # Backwards-compat shim (older Streamlit pages may still call ask())
 def ask(question: str, context: str, lang: str) -> str:
-    return ask_claude(question, context, lang)
+    return ask_claude(question, context, lang).get("text", "")
 
 
 EXAMPLE_QUESTIONS = {
