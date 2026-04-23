@@ -89,11 +89,11 @@ def team_name(english: str) -> str:
 
 T: dict[str, dict[str, str]] = {
     # ---------- sidebar ----------
-    "app_title":    {"en": "⚽ WorldCup26AI",
-                     "zh": "⚽ WorldCup26AI",
-                     "es": "⚽ WorldCup26AI",
-                     "pt": "⚽ WorldCup26AI",
-                     "fr": "⚽ WorldCup26AI"},
+    "app_title":    {"en": "WorldCup26AI",
+                     "zh": "WorldCup26AI",
+                     "es": "WorldCup26AI",
+                     "pt": "WorldCup26AI",
+                     "fr": "WorldCup26AI"},
     "app_tagline":  {"en": "Dixon-Coles + Monte Carlo for the 2026 FIFA World Cup.",
                      "zh": "2026 世界杯的 Dixon-Coles + 蒙特卡洛模型。",
                      "es": "Dixon-Coles + Monte Carlo para la Copa Mundial 2026.",

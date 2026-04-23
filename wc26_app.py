@@ -295,9 +295,22 @@ def merch_link(team: str, kind: str = "jersey") -> str:
 
 
 # ---------- global config + CSS ----------
+def _page_icon():
+    """Prefer the gold-ball logo as favicon; fall back to ⚽ emoji if PIL
+    can't open it (e.g. missing file)."""
+    try:
+        from PIL import Image
+        p = HERE / "static" / "logo.png"
+        if p.exists():
+            return Image.open(p)
+    except Exception:
+        pass
+    return "⚽"
+
+
 st.set_page_config(
     page_title="WorldCup26AI",
-    page_icon="⚽",
+    page_icon=_page_icon(),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -775,6 +788,18 @@ def load_team_media() -> dict:
 
 
 @st.cache_data
+def logo_data_url() -> str:
+    """Return static/logo.png as a base64 data URL so we can embed it inline
+    in markdown/HTML without depending on Streamlit's static-file URL (which
+    differs between local dev and Streamlit Cloud hosting)."""
+    import base64
+    p = HERE / "static" / "logo.png"
+    if not p.exists():
+        return ""
+    return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+
+
+@st.cache_data
 def load_fixtures() -> pd.DataFrame:
     p = _p("wc2026_fixtures.parquet")
     if not p.exists():
@@ -1127,7 +1152,19 @@ def render_bracket(res: pd.DataFrame) -> str:
 
 # ---------- sidebar ----------
 set_language_from_sidebar()
-st.sidebar.markdown(f"# {t('app_title')}")
+_logo = logo_data_url()
+if _logo:
+    st.sidebar.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px;margin:4px 0 8px;">'
+        f'<img src="{_logo}" alt="WorldCup26AI" '
+        f'style="width:44px;height:44px;object-fit:contain;flex-shrink:0;">'
+        f'<span style="font-size:1.25rem;font-weight:700;color:#f7c948;'
+        f'letter-spacing:-0.01em;">{t("app_title")}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.sidebar.markdown(f"# ⚽ {t('app_title')}")
 st.sidebar.caption(t("app_tagline"))
 PAGE_KEYS = [
     ("hero",     t("nav_hero")),
@@ -1168,10 +1205,16 @@ if page_id == "hero":
                        under_pp=f"{best_under['edge']*100:+.0f}",
                        under_flag=flag_img(best_under["team"], h=18),
                        under_team=team_name(best_under["team"]))
+    _logo_url = logo_data_url()
+    _logo_tag = (
+        f'<img src="{_logo_url}" alt="WorldCup26AI" '
+        f'style="height:56px;width:56px;vertical-align:middle;margin-right:14px;">'
+        if _logo_url else '⚽ '
+    )
     st.markdown(
         f"""
         <div class="hero">
-          <h1>{t('app_title')}</h1>
+          <h1>{_logo_tag}{t('app_title')}</h1>
           <p class="subtitle">{headline_text}</p>
           <p class="subtitle" style="margin-top:8px;">{t('hero_intro')}</p>
         </div>
