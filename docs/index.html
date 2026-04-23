@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="impact-site-verification" value="060b5687-af3e-4f9d-a901-b244a4886526">
+  <meta name="description" content="WorldCup26AI — Dixon-Coles + Monte Carlo model for the 2026 FIFA World Cup, with a live Polymarket mispricing leaderboard and an agentic dual-AI chat.">
+  <meta property="og:title" content="WorldCup26AI — Data-driven 2026 FIFA World Cup insight">
+  <meta property="og:description" content="Dixon-Coles + Monte Carlo model for the 2026 FIFA World Cup, with a live Polymarket mispricing leaderboard and agentic dual-AI chat.">
+  <meta property="og:image" content="logo.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="logo.png">
+  <title>WorldCup26AI — Data-driven 2026 FIFA World Cup insight</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0b1220;
+      color: #e8edf7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #f7c948; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+    header img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f7c948;
+      letter-spacing: -0.01em;
+    }
+    header p.tag {
+      margin: 4px 0 0;
+      font-size: 0.92rem;
+      color: #94a3c5;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #121c2e 0%, #0e1728 100%);
+      border: 1px solid #1b2742;
+      border-radius: 14px;
+      padding: 40px 36px;
+      margin-bottom: 40px;
+    }
+    .hero h2 {
+      margin: 0 0 14px;
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .hero h2 .accent { color: #f7c948; }
+    .hero p {
+      margin: 0 0 18px;
+      color: #cfd7e8;
+      font-size: 1.05rem;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .cta {
+      display: inline-block;
+      padding: 12px 22px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.98rem;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .cta.primary {
+      background: #f7c948;
+      color: #0b1220;
+    }
+    .cta.primary:hover {
+      text-decoration: none;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(247, 201, 72, 0.25);
+    }
+    .cta.secondary {
+      background: transparent;
+      color: #f7c948;
+      border: 1px solid #f7c948;
+    }
+    .cta.secondary:hover {
+      text-decoration: none;
+      background: rgba(247, 201, 72, 0.08);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: #121c2e;
+      border: 1px solid #1b2742;
+      border-radius: 12px;
+      padding: 22px;
+    }
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f7c948;
+    }
+    .card p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: #cfd7e8;
+    }
+    .card .num {
+      display: block;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #e8edf7;
+      margin-bottom: 4px;
+    }
+
+    section.about {
+      border-top: 1px solid #1b2742;
+      padding-top: 36px;
+      margin-bottom: 36px;
+    }
+    section.about h2 {
+      margin: 0 0 14px;
+      font-size: 1.3rem;
+      color: #f7c948;
+    }
+    section.about ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #cfd7e8;
+    }
+    section.about li { margin-bottom: 10px; }
+    section.about strong { color: #e8edf7; }
+
+    footer {
+      border-top: 1px solid #1b2742;
+      padding-top: 24px;
+      margin-top: 40px;
+      font-size: 0.82rem;
+      color: #5b6c8a;
+      text-align: center;
+    }
+    footer a { color: #94a3c5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="logo.png" alt="WorldCup26AI logo">
+      <div>
+        <h1>WorldCup26AI</h1>
+        <p class="tag">Dixon-Coles + Monte Carlo · Live vs Polymarket · Agentic dual-AI chat</p>
+      </div>
+    </header>
+
+    <div class="hero">
+      <h2>
+        The 2026 FIFA World Cup,
+        <span class="accent">seen through a sharper lens.</span>
+      </h2>
+      <p>
+        A Dixon-Coles bivariate Poisson model, fit on 49,287 men's internationals
+        since 1872, run through 10,000 Monte Carlo tournament simulations, and
+        compared live against $700M in Polymarket winner markets.
+      </p>
+      <p>
+        Ask questions in natural language — Claude and Gemini answer side by side,
+        grounded in the same data, with Claude autonomously surfacing team gear
+        when the conversation warrants it.
+      </p>
+      <div class="cta-row">
+        <a class="cta primary" href="https://wc26apppy-sr8pkhgj4ibnhyhu4gpafq.streamlit.app/" target="_blank" rel="noopener">Launch the app →</a>
+        <a class="cta secondary" href="https://github.com/AIoOS-67/worldcup26iq" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="num">49K</span>
+        <h3>Internationals</h3>
+        <p>Every men's international since 1872, not just the headline leagues.</p>
+      </div>
+      <div class="card">
+        <span class="num">+7.0%</span>
+        <h3>Brier skill</h3>
+        <p>Against uniform baseline, verified on WC 2018 + 2022 (128 matches).</p>
+      </div>
+      <div class="card">
+        <span class="num">10,000</span>
+        <h3>Monte Carlo runs</h3>
+        <p>Full 48-team group stage + 32-team knockout bracket, every refresh.</p>
+      </div>
+      <div class="card">
+        <span class="num">43 / 48</span>
+        <h3>Markets covered</h3>
+        <p>Polymarket winner markets with ≥$500K liquidity, re-scored live.</p>
+      </div>
+    </div>
+
+    <section class="about">
+      <h2>What's inside</h2>
+      <ul>
+        <li><strong>Champion probabilities</strong> — full 48-team chart with stage-reach breakdown (R32 → Final).</li>
+        <li><strong>Mispricing leaderboard</strong> — ranked by |edge| × √(liquidity), each row with a data-backed reason.</li>
+        <li><strong>What-If simulator</strong> — lock any group's 1st / 2nd / 3rd place, rerun 500–5,000 Monte Carlo tournaments, see the champion-probability shift as a dumbbell chart.</li>
+        <li><strong>Ask the Model</strong> — Claude (primary analyst) + Gemini (skeptical second opinion) answer in the user's UI language; Claude can autonomously call tools to surface official team gear with current pricing and promos.</li>
+        <li><strong>Team Explorer</strong> — crest, home jersey, squad with player photos, model path-to-final.</li>
+        <li><strong>Groups Overview, Schedule, Stage Reach, Calibration, Methodology</strong> — every number traceable back to the data.</li>
+      </ul>
+    </section>
+
+    <section class="about">
+      <h2>Monetisation partner interest</h2>
+      <ul>
+        <li>Targeted affiliate placements driven by LLM reasoning over tournament + user context, not keyword triggers.</li>
+        <li>Shoppable team cards already wired in-product, ready to swap to tagged URLs on program approval.</li>
+        <li>Audience: English / Mandarin / Spanish / Portuguese / French football fans, model-analytics leaning, active during tournament window (Jun–Jul 2026).</li>
+      </ul>
+    </section>
+
+    <footer>
+      WorldCup26AI · Built for the 2026 Zerve AI Hackathon
+      · <a href="https://wc26apppy-sr8pkhgj4ibnhyhu4gpafq.streamlit.app/" target="_blank" rel="noopener">Live app</a>
+      · <a href="https://github.com/AIoOS-67/worldcup26iq" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+</body>
+</html>
