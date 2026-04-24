@@ -285,13 +285,27 @@ def team_with_flag_img(team: str, h: int = 16) -> str:
     return f"{flag_img(team, h)} {team_name(team)}"
 
 
+# Fanatics affiliate tracking — live via Impact.com, approved Apr 23 2026.
+# Every click through merch_link() carries this publisher tag, so a purchase
+# on the landing page attributes commission (1%–8%, 2%–8% on Online Sale)
+# back to FoodyePay Technology's Impact account.
+FANATICS_PUBLISHER_ID = "7225697"
+FANATICS_AD_ID        = "586570"
+FANATICS_PROGRAM_ID   = "9663"  # Fanatics (Global)
+FANATICS_CLICK_BASE = (
+    f"https://fanatics.93n6tx.net/c/{FANATICS_PUBLISHER_ID}"
+    f"/{FANATICS_AD_ID}/{FANATICS_PROGRAM_ID}"
+)
+
+
 def merch_link(team: str, kind: str = "jersey") -> str:
-    """Affiliate-ready outbound URL for team merchandise. Currently points at
-    Fanatics search; swap in a real tagged affiliate URL once the Impact /
-    ShareASale / Awin program is approved (see desktop 'AI 商店' brief)."""
+    """Return an Impact.com-wrapped Fanatics affiliate deep link. The wrapper
+    redirects to the Fanatics search results for this team, appending the
+    publisher's irclickid / SSAID so any subsequent purchase is attributed."""
     import urllib.parse
     q = urllib.parse.quote_plus(f"{team} {kind}")
-    return f"https://www.fanatics.com/search?query={q}"
+    destination = f"https://www.fanatics.com/search?query={q}"
+    return f"{FANATICS_CLICK_BASE}?u={urllib.parse.quote(destination, safe='')}"
 
 
 # ---------- global config + CSS ----------
