@@ -349,13 +349,44 @@ PRICING_TOOL = {
 }
 
 
-def _mock_pricing(team: str) -> dict:
-    """Deterministic demo pricing — seeded from the team name so each team has
-    a stable price / sale / promo profile across sessions.
+def _real_pricing(team: str) -> dict | None:
+    """Live pricing from the filtered Fanatics product feed (Impact-approved
+    Apr 23 2026). Returns None when the team has no inventory — caller falls
+    back to _mock_pricing() so the tool always returns something usable."""
+    # Delayed import to avoid pulling Streamlit into this module's import graph
+    # when build scripts import ask_model for its WC26_TEAMS list.
+    try:
+        from wc26_app import find_team_product
+    except Exception:
+        return None
+    product = find_team_product(team, prefer_keyword="jersey")
+    if not product:
+        return None
 
-    When the real affiliate Product Feed is wired in (Awin / Impact / ShareASale
-    for Fanatics), swap this function's body for a lookup against that data
-    source. The tool schema and render path stay identical."""
+    price = float(product.get("price") or 0)
+    list_price = float(product.get("list_price") or price)
+    on_sale = bool(product.get("on_sale")) and list_price > price > 0
+    discount_pct = int(product.get("discount_pct") or 0)
+
+    out: dict = {
+        "team": team,
+        "currency": "USD",
+        "list_price": round(list_price, 2) if list_price else price,
+        "product_name": product.get("name"),
+        "manufacturer": product.get("manufacturer"),
+        "in_stock": bool(product.get("in_stock")),
+    }
+    if on_sale:
+        out["sale_price"] = round(price, 2)
+        out["discount_pct"] = discount_pct
+    out["_source"] = "Fanatics Global product feed (Impact.com)"
+    return out
+
+
+def _mock_pricing(team: str) -> dict:
+    """Deterministic fallback pricing for teams with no Fanatics inventory
+    (~11 of 48 WC26 sides). Seeded from the team name so the same team always
+    reports the same price / sale profile across sessions."""
     h = int(hashlib.sha256(team.encode("utf-8")).hexdigest()[:10], 16)
     base = 89 + (h % 41)  # $89 – $129
     is_sale = (h % 10) < 3  # 30% of teams
@@ -376,10 +407,16 @@ def _mock_pricing(team: str) -> dict:
         out["promo_code"] = "WC26OFF"
         out["promo_discount_pct"] = 10
     out["_note"] = (
-        "Demo pricing — seeded sample data, not a live Fanatics feed. "
-        "Will swap to real Awin/Impact product feed after affiliate approval."
+        "Fallback pricing — this team has no current inventory in the "
+        "Fanatics Global feed, so this is a seeded estimate."
     )
     return out
+
+
+def _lookup_pricing(team: str) -> dict:
+    """Unified pricing resolver: real feed first, mock fallback."""
+    real = _real_pricing(team)
+    return real if real else _mock_pricing(team)
 
 
 # ---------- Claude ----------
@@ -452,7 +489,7 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
             team = inp.get("team")
 
             if name == "check_team_merch_pricing" and team in WC26_TEAMS:
-                pricing = _mock_pricing(team)
+                pricing = _lookup_pricing(team)
                 pricing_cache[team] = pricing
                 tool_results.append({
                     "type": "tool_result",

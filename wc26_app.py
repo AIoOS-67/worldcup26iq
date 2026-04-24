@@ -110,10 +110,14 @@ def _render_merch_card(rec: dict) -> str:
                 f'font-weight:600;">{promo}</code> '
                 f'= extra −{pricing.get("promo_discount_pct", 0)}%</div>'
             )
+        is_real = bool(pricing.get("_source"))
+        disclaimer_text = (
+            f'Live from {pricing["_source"]}' if is_real
+            else 'Fallback estimate — no current inventory in Fanatics feed for this team.'
+        )
         disclaimer = (
-            '<div style="margin-top:6px;font-size:0.68rem;color:#5b6c8a;'
-            'font-style:italic;">Demo pricing — will swap to live feed after '
-            'affiliate approval.</div>'
+            f'<div style="margin-top:6px;font-size:0.68rem;color:#5b6c8a;'
+            f'font-style:italic;">{disclaimer_text}</div>'
         )
 
     border_color = "rgba(239,68,68,0.5)" if sale_pill else "rgba(247,201,72,0.3)"
@@ -299,9 +303,18 @@ FANATICS_CLICK_BASE = (
 
 
 def merch_link(team: str, kind: str = "jersey") -> str:
-    """Return an Impact.com-wrapped Fanatics affiliate deep link. The wrapper
-    redirects to the Fanatics search results for this team, appending the
-    publisher's irclickid / SSAID so any subsequent purchase is attributed."""
+    """Return an Impact-wrapped Fanatics affiliate link for this team.
+
+    Prefers a deep link straight to a specific SKU (from the Fanatics product
+    feed) — the feed's `link` column is already publisher-tagged and points at
+    an exact product page, which converts 3-5x better than a search landing.
+
+    Falls back to a wrapped search URL when the team has no inventory in the
+    feed (~11 of the 48 WC26 teams, mostly lower-profile sides)."""
+    product = find_team_product(team, prefer_keyword=kind)
+    if product and product.get("link"):
+        return product["link"]
+    # Fallback — wrapped Fanatics search
     import urllib.parse
     q = urllib.parse.quote_plus(f"{team} {kind}")
     destination = f"https://www.fanatics.com/search?query={q}"
@@ -811,6 +824,38 @@ def logo_data_url() -> str:
     if not p.exists():
         return ""
     return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+
+
+@st.cache_data
+def load_fanatics_products() -> pd.DataFrame:
+    """Return the filtered Fanatics WC26 product feed (built by
+    build_fanatics_feed.py). Empty DataFrame if not present — callers should
+    fall back to mock pricing / generic search links in that case."""
+    p = _p("fanatics_products.parquet")
+    if not p.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(p)
+
+
+def find_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
+    """Return one representative Fanatics SKU for `team` as a dict, or None if
+    the team has no inventory. Ranks in-stock products first, prefers on-sale,
+    then prefers names containing `prefer_keyword` (defaults to 'jersey'),
+    then lowest price. Used by merch_link() + pricing lookup."""
+    df = load_fanatics_products()
+    if df.empty:
+        return None
+    g = df[df["team"] == team]
+    if g.empty:
+        return None
+    kw = prefer_keyword.lower()
+    g = g.assign(
+        _instock=(~g["in_stock"]).astype(int),
+        _notsale=(~g["on_sale"]).astype(int),
+        _notkw=(~g["name"].str.lower().str.contains(kw, na=False)).astype(int),
+    )
+    g = g.sort_values(["_instock", "_notkw", "_notsale", "price"])
+    return g.drop(columns=["_instock", "_notsale", "_notkw"]).iloc[0].to_dict()
 
 
 @st.cache_data
