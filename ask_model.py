@@ -278,20 +278,17 @@ WC26_TEAMS = [
 MERCH_TOOL = {
     "name": "recommend_team_merch",
     "description": (
-        "Display a shoppable card below your answer with the team's crest, "
-        "home jersey, and an outbound link to their official gear. Call this "
-        "tool when showing the team's visuals would genuinely add to the "
-        "conversation — e.g. the user expresses fan affinity, asks for a "
-        "team to 'follow' / 'support' / 'bet on', or you're highlighting a "
-        "dark horse the user might want to get behind.\n\n"
-        "Do NOT call it for every team mentioned in passing. Do NOT call it "
-        "when the user is asking a purely analytical question ('Why is X "
-        "undervalued?') unless showing the kit genuinely fits the answer.\n\n"
-        "Usually 0 cards per response. At most one, or two if the user is "
-        "asking to compare / pick between two specific teams.\n\n"
+        "Display a shoppable card below your answer with a Fanatics-licensed "
+        "product (crest + image + deep link) for a WC26 team. Call this "
+        "when showing the gear visuals genuinely adds to the conversation — "
+        "fan affinity signals, 'who should I follow / support / root for' "
+        "questions, dark-horse picks, or specific player/product asks.\n\n"
+        "Do NOT call it for every team mentioned in passing. Usually 0 cards "
+        "per response. At most one, or two if the user is comparing teams.\n\n"
         "If you've already called check_team_merch_pricing for this team "
-        "during the current turn, the card will automatically pick up the "
-        "sale price / promo code — you don't need to pass them here."
+        "during the current turn (ideally with matching `keywords`), the "
+        "card will automatically pick up the same SKU and any SALE / promo "
+        "code — you don't need to pass them here."
     ),
     "input_schema": {
         "type": "object",
@@ -304,9 +301,23 @@ MERCH_TOOL = {
             "pitch": {
                 "type": "string",
                 "description": (
-                    "A single short sentence in the response language (the user's UI "
-                    "language) explaining WHY the user might want to check out this "
-                    "team's gear. Under 20 words. No generic ad-speak."
+                    "A single short sentence in the response language explaining "
+                    "WHY the user might want to check out this gear. Under 20 "
+                    "words. No generic ad-speak."
+                ),
+            },
+            "keywords": {
+                "type": "string",
+                "description": (
+                    "Optional space-separated search terms to pick a SPECIFIC "
+                    "product from the team's catalogue, instead of the default "
+                    "cheapest-jersey fallback. Examples: 'Messi' for the Messi "
+                    "signature jersey, 'authentic 2024 home' for the premium "
+                    "authentic home kit, 'hat' for headwear, 'kids' for youth "
+                    "sizing. Product names in the feed are rich (player, year, "
+                    "gender, replica/authentic, home/away), so passing even 1–2 "
+                    "words dramatically sharpens the recommendation. Leave "
+                    "empty when the user hasn't specified anything."
                 ),
             },
         },
@@ -319,21 +330,22 @@ PRICING_TOOL = {
     "name": "check_team_merch_pricing",
     "description": (
         "Look up current listed price, any active sale, and promo codes for "
-        "a team's official home jersey on our Fanatics product feed. Returns "
-        "{list_price, sale_price?, discount_pct?, sale_ends_hours?, "
-        "promo_code?, promo_discount_pct?, currency}.\n\n"
+        "a team's Fanatics product. Returns {list_price, sale_price?, "
+        "discount_pct?, product_name, manufacturer, in_stock, currency, "
+        "_source}.\n\n"
         "Call this when:\n"
         "- The user shows price sensitivity ('cheap', 'expensive', 'deal', "
-        "'on sale', 'discount', 'budget', '便宜', '贵', '折扣')\n"
-        "- The user explicitly asks about buying / ordering / price / cost\n"
+        "'on sale', 'discount', '便宜', '贵', '折扣')\n"
+        "- The user explicitly asks about buying / ordering / price\n"
+        "- The user asks about a specific player's jersey (Messi, Mbappe, "
+        "Pulisic, etc.) — pass the player name as `keywords` so the feed "
+        "returns the player's signature jersey, not a generic team item\n"
         "- You're about to call recommend_team_merch AND want to anchor "
         "the pitch with a concrete price or active discount\n\n"
-        "After calling this, incorporate any meaningful discount or promo "
-        "code naturally into your written reply (don't just dump the JSON). "
-        "If there's no sale, you may still mention the list price OR just "
-        "skip pricing talk — trust your judgment.\n\n"
-        "Do NOT call this more than once per team per turn. Do NOT call it "
-        "when the user is asking a purely analytical question."
+        "After calling this, incorporate any meaningful discount naturally "
+        "into your written reply (don't just dump the JSON). Trust your "
+        "judgment on whether to mention price at all.\n\n"
+        "Do NOT call this more than once per (team, keywords) pair per turn."
     ),
     "input_schema": {
         "type": "object",
@@ -341,7 +353,17 @@ PRICING_TOOL = {
             "team": {
                 "type": "string",
                 "enum": WC26_TEAMS,
-                "description": "The team whose jersey pricing to look up.",
+                "description": "The team whose product pricing to look up.",
+            },
+            "keywords": {
+                "type": "string",
+                "description": (
+                    "Optional space-separated search terms to pick a SPECIFIC "
+                    "product. Use when the user asked about a named player "
+                    "('Messi', 'Mbappe'), a specific gear type ('hat', "
+                    "'scarf', 'ball'), or quality tier ('authentic', "
+                    "'replica'). Leave empty for a generic team-jersey lookup."
+                ),
             },
         },
         "required": ["team"],
@@ -371,31 +393,62 @@ def _fanatics_products() -> pd.DataFrame:
     return _FANATICS_DF_CACHE
 
 
-def _pick_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
+def _pick_team_product(team: str, keywords: str = "") -> dict | None:
     """Return the best-ranked product row for `team` as a dict, or None if no
-    inventory. Ranks in-stock first, prefers name containing `prefer_keyword`,
-    prefers on-sale, then lowest price."""
+    inventory.
+
+    Ranking (in order):
+    1. In-stock first
+    2. **Every word in `keywords` counts as a required match** — products that
+       hit more of the terms rank higher. Empty keywords → all products tie.
+    3. If no keywords are passed, prefer 'jersey' in the name (default intent).
+    4. Prefer on-sale
+    5. Lowest price
+    """
     df = _fanatics_products()
     if df.empty:
         return None
     g = df[df["team"] == team]
     if g.empty:
         return None
-    kw = prefer_keyword.lower()
-    g = g.assign(
-        _instock=(~g["in_stock"]).astype(int),
-        _notkw=(~g["name"].str.lower().str.contains(kw, na=False)).astype(int),
-        _notsale=(~g["on_sale"]).astype(int),
-    )
-    g = g.sort_values(["_instock", "_notkw", "_notsale", "price"])
-    return g.drop(columns=["_instock", "_notsale", "_notkw"]).iloc[0].to_dict()
+    names_lower = g["name"].str.lower().fillna("")
+
+    terms = [w for w in keywords.lower().split() if w]
+    if terms:
+        # Negative count of matched terms so lower = better match
+        match_count = sum(names_lower.str.contains(t, regex=False).astype(int) for t in terms)
+        # If no product matches ANY term, fall back to default jersey preference
+        if match_count.max() == 0:
+            g = g.assign(
+                _instock=(~g["in_stock"]).astype(int),
+                _miss=1,
+                _notkw=(~names_lower.str.contains("jersey")).astype(int),
+                _notsale=(~g["on_sale"]).astype(int),
+            )
+        else:
+            g = g.assign(
+                _instock=(~g["in_stock"]).astype(int),
+                _miss=-match_count,
+                _notkw=0,
+                _notsale=(~g["on_sale"]).astype(int),
+            )
+    else:
+        g = g.assign(
+            _instock=(~g["in_stock"]).astype(int),
+            _miss=0,
+            _notkw=(~names_lower.str.contains("jersey")).astype(int),
+            _notsale=(~g["on_sale"]).astype(int),
+        )
+
+    g = g.sort_values(["_instock", "_miss", "_notkw", "_notsale", "price"])
+    return g.drop(columns=["_instock", "_miss", "_notkw", "_notsale"]).iloc[0].to_dict()
 
 
-def _real_pricing(team: str) -> dict | None:
+def _real_pricing(team: str, keywords: str = "") -> dict | None:
     """Live pricing from the filtered Fanatics product feed (Impact-approved
     Apr 23 2026). Returns None when the team has no inventory — caller falls
     back to _mock_pricing() so the tool always returns something usable."""
-    product = _pick_team_product(team, prefer_keyword="jersey")
+    product = _pick_team_product(team, keywords=keywords)
     if not product:
         return None
 
@@ -449,9 +502,9 @@ def _mock_pricing(team: str) -> dict:
     return out
 
 
-def _lookup_pricing(team: str) -> dict:
+def _lookup_pricing(team: str, keywords: str = "") -> dict:
     """Unified pricing resolver: real feed first, mock fallback."""
-    real = _real_pricing(team)
+    real = _real_pricing(team, keywords=keywords)
     return real if real else _mock_pricing(team)
 
 
@@ -489,7 +542,9 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
     messages: list[dict] = [{"role": "user", "content": question}]
     text_parts: list[str] = []
     merch_recs: list[dict] = []
-    pricing_cache: dict[str, dict] = {}
+    # Keyed by (team, keywords) so Claude can look up both a generic and a
+    # player-specific SKU for the same team in a single turn if needed.
+    pricing_cache: dict[tuple[str, str], dict] = {}
 
     for _ in range(MAX_AGENT_STEPS):
         resp = client.messages.create(
@@ -525,8 +580,9 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
             team = inp.get("team")
 
             if name == "check_team_merch_pricing" and team in WC26_TEAMS:
-                pricing = _lookup_pricing(team)
-                pricing_cache[team] = pricing
+                keywords = (inp.get("keywords") or "").strip()
+                pricing = _lookup_pricing(team, keywords=keywords)
+                pricing_cache[(team, keywords)] = pricing
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu.id,
@@ -534,7 +590,8 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
                 })
             elif name == "recommend_team_merch" and team in WC26_TEAMS:
                 pitch = inp.get("pitch", "")
-                merch_recs.append({"team": team, "pitch": pitch})
+                keywords = (inp.get("keywords") or "").strip()
+                merch_recs.append({"team": team, "pitch": pitch, "keywords": keywords})
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu.id,
@@ -550,11 +607,27 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
 
         messages.append({"role": "user", "content": tool_results})
 
-    # Attach any pricing we picked up during this turn to matching merch recs.
+    # Attach pricing (+ the specific product we'd link to) to every merch
+    # card. Prefer a pricing call from this turn with matching keywords;
+    # otherwise do a direct feed lookup so the card's price, SKU, image,
+    # and link all reflect the player/product Claude actually picked.
     for rec in merch_recs:
-        p = pricing_cache.get(rec["team"])
+        team = rec["team"]
+        kw = rec.get("keywords", "")
+        p = pricing_cache.get((team, kw)) or pricing_cache.get((team, ""))
+        if not p:
+            p = _lookup_pricing(team, keywords=kw)
         if p:
             rec["pricing"] = p
+        # Also surface the concrete SKU dict (image + link) for the render
+        product = _pick_team_product(team, keywords=kw)
+        if product:
+            rec["product"] = {
+                "name": product.get("name"),
+                "price": product.get("price"),
+                "image_url": product.get("image_url"),
+                "link": product.get("link"),
+            }
 
     return {
         "text": "".join(text_parts) or "(empty response)",

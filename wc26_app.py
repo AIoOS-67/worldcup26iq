@@ -42,30 +42,38 @@ def _render_merch_card(rec: dict) -> str:
     """Inline shoppable card — smaller than Team Explorer version, designed to
     slot inside a chat bubble below Claude's text.
 
-    If rec carries a 'pricing' dict (populated when Claude called
-    check_team_merch_pricing for the same team), show a SALE badge,
-    strikethrough list price, sale price, and any promo code."""
-    # Delayed import: these helpers live further down in this module. This
-    # function is called only after the module is fully loaded (from the
-    # chat render path), so the lookups resolve by then.
+    If rec carries a 'product' dict (populated whenever Claude picked a
+    specific Fanatics SKU — player jersey, authentic kit, hat, etc.), the
+    card uses that SKU's real image and deep link. Otherwise falls back to
+    the team's TheSportsDB crest + generic jersey and the wrapped search URL.
+
+    If rec carries a 'pricing' dict, shows SALE badge / strikethrough / promo.
+    """
     media = globals()["load_team_media"]().get(rec["team"], {})
-    if not (media.get("badge") or media.get("jersey")):
-        return ""
-    shop_url = globals()["merch_link"](rec["team"])
+    product = rec.get("product") or {}
+    # Prefer the real Fanatics SKU link (already publisher-tagged, deep-linked
+    # to that specific product page — highest conversion). Fall back to the
+    # team-level wrapped search URL.
+    shop_url = product.get("link") or globals()["merch_link"](rec["team"])
     localized = globals()["team_name"](rec["team"])
     pitch = rec.get("pitch", "")
     pricing = rec.get("pricing") or {}
 
+    # Crest always comes from TheSportsDB (matches app-wide style + has the
+    # national badge). Right-side image prefers the specific Fanatics product
+    # photo — so a "Messi jersey" card shows the Messi shirt, not a generic
+    # Argentina kit.
     badge_html = (
         f'<img src="{media["badge"]}" alt="{rec["team"]} crest" '
         f'style="height:56px;width:56px;object-fit:contain;flex-shrink:0;">'
         if media.get("badge") else ""
     )
+    right_img_src = product.get("image_url") or media.get("jersey")
     jersey_html = (
-        f'<img src="{media["jersey"]}" alt="{rec["team"]} jersey" '
+        f'<img src="{right_img_src}" alt="{product.get("name") or rec["team"]}" '
         f'style="height:88px;width:auto;flex-shrink:0;'
         f'background:rgba(255,255,255,0.04);border-radius:4px;padding:4px;">'
-        if media.get("jersey") else ""
+        if right_img_src else ""
     )
 
     # Pricing strip — only rendered when pricing was looked up this turn
