@@ -218,7 +218,7 @@ The UI language setting is the ONLY source of truth for your output language.
 # Team merch & shopping (agentic — always ask "for whom?" first if unclear)
 You have two merch tools:
 
-1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / promo_code / promo_note / _source. The returned `promo_code` field is the currently-active Fanatics code you should mention in your reply (e.g. "use code **39SHIP** for free shipping on orders $39+"). Don't invent codes — use exactly what the tool returns, and only if the order total would actually benefit.
+1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / promo_code / promo_note / promo_region / _source. The returned `promo_code` field is the currently-active Fanatics code you can mention in your reply. Use exactly what the tool returns — never invent codes — and respect `promo_region`: if `promo_region` is "US" and the user is clearly outside the U.S. (asked in 中文/ES/PT/FR, mentioned a non-U.S. shipping address, etc.), either skip the code or caveat it as "US 境内 $39+ 免运费，国际订单不适用" in the user's language. Only push the code when the shopper can actually use it.
 2. `recommend_team_merch(team, pitch, keywords?)` — append a shoppable card (crest + product photo + SALE badge + deep link) below your written reply.
 
 ## PLAYER → TEAM INFERENCE (never ask a team question the user already answered)
@@ -600,14 +600,16 @@ def _mock_pricing(team: str) -> dict:
     return out
 
 
-# Fanatics public free-shipping code. Always active, no partner approval
-# needed — displayed as a sitewide banner on fanatics.com. Attaching it to
-# every pricing lookup so Claude can mention it and the card footer shows
-# the code chip. Swap to a brand-exclusive partner code once approved via
-# Impact → Promo Codes → Requests.
+# Fanatics public free-shipping code. US-only — "FREE U.S. Shipping on
+# Orders Over $39" per the Fanatics sitewide banner. Always active, no
+# partner approval needed. Swap to a brand-exclusive partner code
+# (ideally one that also works internationally) once approved via
+# Impact → Promo Codes → Requests. `region` field flags scope so Claude
+# can caveat the code for non-U.S. users instead of blindly recommending it.
 FANATICS_PUBLIC_PROMO = {
     "promo_code": "39SHIP",
-    "promo_note": "Free shipping on orders $39+",
+    "promo_note": "Free U.S. shipping on orders $39+",
+    "promo_region": "US",
 }
 
 
@@ -621,6 +623,7 @@ def _lookup_pricing(team: str, keywords: str = "") -> dict:
     # stale promo_discount_pct field (39SHIP is free-shipping, not %-off).
     out["promo_code"] = FANATICS_PUBLIC_PROMO["promo_code"]
     out["promo_note"] = FANATICS_PUBLIC_PROMO["promo_note"]
+    out["promo_region"] = FANATICS_PUBLIC_PROMO["promo_region"]
     out.pop("promo_discount_pct", None)
     return out
 

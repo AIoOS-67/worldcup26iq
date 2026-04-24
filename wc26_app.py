@@ -111,19 +111,28 @@ def _render_merch_card(rec: dict) -> str:
             )
         promo = pricing.get("promo_code")
         if promo:
-            # Prefer explicit promo_note (e.g. "Free shipping on orders $39+")
-            # when present; fall back to percent-off phrasing for legacy/mock
-            # pricing that uses promo_discount_pct.
+            # Prefer explicit promo_note (e.g. "Free U.S. shipping on orders
+            # $39+") when present; fall back to percent-off phrasing for
+            # legacy/mock pricing that uses promo_discount_pct.
             promo_note = pricing.get("promo_note")
             if promo_note:
                 promo_desc = promo_note
             else:
                 promo_desc = f'extra −{pricing.get("promo_discount_pct", 0)}% off'
+            # Small region flag so international shoppers aren't misled by a
+            # U.S.-only free-shipping code.
+            region = (pricing.get("promo_region") or "").upper()
+            region_tag = (
+                f'<span style="background:rgba(94,107,137,0.25);color:#94a3c5;'
+                f'font-size:0.65rem;font-weight:700;padding:1px 6px;'
+                f'border-radius:8px;margin-left:6px;letter-spacing:0.3px;">'
+                f'{region}</span>' if region else ""
+            )
             price_html += (
                 f'<div style="margin-top:4px;font-size:0.78rem;color:#cfd7e8;">'
                 f'Code <code style="background:rgba(247,201,72,0.15);'
                 f'color:#f7c948;padding:1px 6px;border-radius:3px;'
-                f'font-weight:600;">{promo}</code> · {promo_desc}</div>'
+                f'font-weight:600;">{promo}</code>{region_tag} · {promo_desc}</div>'
             )
         is_real = bool(pricing.get("_source"))
         disclaimer_text = (
