@@ -1820,6 +1820,44 @@ elif page_id == "ask":
     # Slot for in-flight thinking messages
     thinking_slot = st.empty()
 
+    # Quick-reply buttons when Claude's last message asks "who's it for?"
+    # Saves the user a round-trip of typing AND gives Claude a structured
+    # follow-up it can reason about without re-parsing natural language.
+    def _claude_is_asking_audience(hist: list) -> bool:
+        for entry in reversed(hist):
+            role = entry.get("role")
+            if role == "claude":
+                content = entry.get("content")
+                text = content.get("text", "") if isinstance(content, dict) else (content or "")
+                tl = text.lower()
+                signals = [
+                    "男士款", "女士款", "青少年", "全家桶",    # zh menu
+                    "men's", "women's", "youth", "family bundle",  # en menu
+                    "who is it for", "who's it for", "想给谁买", "给谁买",
+                ]
+                return any(s in text or s.lower() in tl for s in signals)
+            if role == "user":
+                return False
+        return False
+
+    if _claude_is_asking_audience(st.session_state["ask_history"]):
+        st.markdown(
+            '<div style="margin:8px 0 4px;font-size:0.85rem;color:#94a3c5;">'
+            '⚡ Quick pick:</div>',
+            unsafe_allow_html=True,
+        )
+        b1, b2, b3, b4 = st.columns(4)
+        audience_opts = [
+            (b1, "👨 Men's",    "我要男士款（成人球员版/复刻版）"),
+            (b2, "👩 Women's",  "我要女士款（女款剪裁）"),
+            (b3, "👦 Youth",    "我要青少年/儿童款"),
+            (b4, "👨‍👩‍👧 Family", "给全家买 — 爸爸、妈妈、孩子一人一件"),
+        ]
+        for col, label, prompt in audience_opts:
+            if col.button(label, key=f"aud_btn_{label}", use_container_width=True):
+                st.session_state["_preset_q"] = prompt
+                st.rerun()
+
     # Input pinned to bottom
     preset = st.session_state.pop("_preset_q", None)
     user_q = st.chat_input(t("ask_placeholder"), key="ask_chat_input")
@@ -1843,7 +1881,12 @@ elif page_id == "ask":
         # Call the actual APIs
         if target in ("claude", "both"):
             try:
-                ans = ask_claude(clean_q, data_context, lang)
+                # Replay prior conversation so multi-turn merch dialogues stay
+                # in context (e.g. user says "梅西球衣" then just "男士款").
+                # The current user_q was already appended to ask_history above,
+                # so hand Claude everything up to but not including that tail.
+                prev_history = st.session_state["ask_history"][:-1]
+                ans = ask_claude(clean_q, data_context, lang, history=prev_history)
                 st.session_state["ask_history"].append({"role": "claude", "content": ans})
             except RuntimeError as e:
                 msg = "ANTHROPIC_API_KEY not set." if "NO_CLAUDE_KEY" in str(e) else str(e)

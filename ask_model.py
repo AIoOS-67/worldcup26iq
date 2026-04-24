@@ -610,8 +610,49 @@ def _lookup_pricing(team: str, keywords: str = "") -> dict:
 MAX_AGENT_STEPS = 4  # safety bound on tool-use rounds per user turn
 
 
-def ask_claude(question: str, context: str, lang: str) -> dict:
+def _history_to_messages(history: list | None) -> list[dict]:
+    """Convert ask_history (list of {role, content}) into Anthropic messages
+    format, keeping only user + Claude turns (Gemini lines are irrelevant to
+    Claude's reasoning). Claude's prior responses may be stored as dicts
+    (with text + merch); we flatten to plain text for the chat replay."""
+    out: list[dict] = []
+    if not history:
+        return out
+    for entry in history:
+        role = entry.get("role")
+        content = entry.get("content")
+        if role == "user":
+            if isinstance(content, str) and content.strip():
+                out.append({"role": "user", "content": content})
+        elif role == "claude":
+            if isinstance(content, dict):
+                text = content.get("text", "")
+            else:
+                text = content or ""
+            if text.strip():
+                out.append({"role": "assistant", "content": text})
+        # Skip 'gemini', 'error', 'thinking_*' roles
+    # Collapse adjacent same-role messages to prevent Anthropic API errors:
+    # the API requires strict user/assistant alternation. If two consecutive
+    # user turns appear (e.g. the previous turn had no Claude reply for some
+    # reason), merge them.
+    merged: list[dict] = []
+    for m in out:
+        if merged and merged[-1]["role"] == m["role"]:
+            merged[-1]["content"] = merged[-1]["content"] + "\n\n" + m["content"]
+        else:
+            merged.append(m)
+    return merged
+
+
+def ask_claude(question: str, context: str, lang: str,
+               history: list | None = None) -> dict:
     """Return {'text': str, 'merch': list[{team, pitch, pricing?}]}.
+
+    Accepts `history` (the app's ask_history list) so multi-turn merch
+    dialogues stay coherent — e.g. Claude remembers the user mentioned
+    "梅西" in turn 1 when turn 2 is just "男士款". Previously each call
+    was stateless and Claude had to ask the team name all over again.
 
     Runs an agentic loop: Claude may call check_team_merch_pricing
     (receiving real tool_result data back so it can reason with the
@@ -637,7 +678,10 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
         app_guide=APP_GUIDE,
     )
 
-    messages: list[dict] = [{"role": "user", "content": question}]
+    # Replay prior user + claude turns so the model has conversational
+    # context; then append the current turn.
+    messages: list[dict] = _history_to_messages(history)
+    messages.append({"role": "user", "content": question})
     text_parts: list[str] = []
     merch_recs: list[dict] = []
     # Keyed by (team, keywords) so Claude can look up both a generic and a
