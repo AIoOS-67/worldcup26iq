@@ -131,6 +131,30 @@ def _render_merch_card(rec: dict) -> str:
     border_color = "rgba(239,68,68,0.5)" if sale_pill else "rgba(247,201,72,0.3)"
     bg_color = "rgba(239,68,68,0.06)" if sale_pill else "rgba(247,201,72,0.08)"
 
+    # Age-group pill ("👨 Men's" / "👦 Youth" / "👩 Women's" / ...) — helps
+    # users spot kids-sized SKUs without having to click through. Only shown
+    # when the real Fanatics product provides an age_group.
+    _AGE_EMOJI = {
+        "Men's":   "👨",
+        "Women's": "👩",
+        "Adult":   "👥",
+        "Youth":   "👦",
+        "Boys'":   "👦",
+        "Girls'":  "👧",
+        "Toddler": "🧒",
+        "Infant":  "👶",
+    }
+    age_group = (product or {}).get("age_group") or ""
+    age_pill = ""
+    if age_group:
+        emoji = _AGE_EMOJI.get(age_group, "")
+        age_pill = (
+            f'<span style="background:rgba(148,163,197,0.15);'
+            f'color:#cfd7e8;font-size:0.7rem;font-weight:600;'
+            f'padding:2px 8px;border-radius:10px;margin-left:8px;'
+            f'letter-spacing:0.3px;">{emoji} {age_group}</span>'
+        )
+
     return (
         f'<a href="{shop_url}" target="_blank" rel="noopener sponsored" '
         f'style="display:flex;gap:12px;align-items:center;margin-top:10px;'
@@ -140,7 +164,7 @@ def _render_merch_card(rec: dict) -> str:
         f'{badge_html}{jersey_html}'
         f'<div style="flex:1;min-width:0;">'
         f'<div style="font-weight:600;color:#f7c948;font-size:0.95rem;">'
-        f'🛒 {localized}{sale_pill}</div>'
+        f'🛒 {localized}{sale_pill}{age_pill}</div>'
         f'<div style="font-size:0.82rem;color:#cfd7e8;margin-top:2px;">{pitch}</div>'
         f'{price_html}{disclaimer}'
         f'</div></a>'

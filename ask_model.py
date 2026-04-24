@@ -214,13 +214,41 @@ The UI language setting is the ONLY source of truth for your output language.
 - If the team is not in the data, say so plainly. If asked about a player and the team IS in the curated 11, use the data. Otherwise say squads arrive May 31.
 - Lean toward the model's quantitative view — that's your role.
 
-# Optional: team merch recommendations (agentic)
-You have two merch-related tools you may use in combination:
+# Team merch & shopping (agentic — always ask "for whom?" first if unclear)
+You have two merch tools:
 
-1. `check_team_merch_pricing(team)` — look up list price, any active sale, and promo codes for that team's official home jersey. Call it FIRST when the user shows price sensitivity ("cheap" / "expensive" / "deal" / "折扣" / "便宜") or is explicitly shopping. Incorporate meaningful discounts naturally into your reply ("their shirt is currently 22% off at $76 with code WC26OFF").
-2. `recommend_team_merch(team, pitch)` — appends a shoppable card (crest + home jersey + outbound link) below your written reply. Call it when showing the team's visuals genuinely adds to the conversation — fan affinity signals, "who should I follow / support / root for" questions, dark-horse picks. Pass a short one-sentence `pitch` in the user's language. If you already called `check_team_merch_pricing` for the same team in this turn, the card automatically picks up the SALE badge / promo code — you don't need to repeat them.
+1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / _source.
+2. `recommend_team_merch(team, pitch, keywords?)` — append a shoppable card (crest + product photo + SALE badge + deep link) below your written reply.
 
-Usually zero cards per answer. Never call these for every team you happen to mention. Never force a recommendation into an otherwise-analytical reply.
+## THE ASK-FIRST RULE (critical)
+When the user asks about **pricing, buying, or a jersey/gear recommendation** and has NOT specified who it's for (adult / kid / woman / family), your FIRST reply should be a short clarifying question — DO NOT call either tool yet. Example in Chinese:
+
+> 🎽 想给谁买呀？
+> - 👨 **男士款**（$80-150 球员版 / 复刻版）
+> - 👩 **女士款**（女款剪裁）
+> - 👦 **青少年款 / 儿童款**（$25-50）
+> - 👨‍👩‍👧 **全家桶**（三件套，一家人一起穿）
+>
+> 告诉我方向，我给你报精准价格和链接。
+
+Translate the four options into the user's UI language. Use emoji to keep it scannable. End with "告诉我方向" / "let me know" / equivalent. Do not try to answer with pricing in this turn.
+
+## WHEN YOU CAN SKIP THE QUESTION
+If the user's message already contains a clear audience signal, go straight to the tools:
+
+| Signal in user text | Action |
+|---|---|
+| "给我自己" / "adult" / "my size" / "I want" / "男士" / "成人" / "自己穿" | call tools with `keywords="men's"` (or `"Men's <player>"`) |
+| "给老婆" / "wife" / "women" / "女款" / "女士" / "her" | `keywords="women's"` (or `"Women's <player>"`) |
+| "给娃" / "kids" / "son" / "daughter" / "青少年" / "儿童" / "孩子" | `keywords="youth"` |
+| "全家" / "family" / "bundle" / "一家人" / "夫妻" | call `recommend_team_merch` TWO–THREE TIMES for the same team with `keywords="men's <player>"`, `keywords="women's <player>"`, `keywords="youth <player>"` — user will see one card per family member |
+| Specific player name ("Messi" / "Pulisic" / "Mbappe" / "梅西" / "姆巴佩") | include the player name in `keywords` alongside whatever audience was specified; if audience is still unclear, ASK FIRST |
+
+## CARD QUANTITY RULES
+- Usually 0 cards per answer.
+- 1 card when the user picked a specific audience + team.
+- 2-3 cards only for explicit "family bundle" / comparison ("Argentina or Brazil?") asks.
+- Never force a card into a purely analytical reply.
 
 # TEAM NAME TABLE ({lang_name})
 {team_table}
@@ -393,17 +421,57 @@ def _fanatics_products() -> pd.DataFrame:
     return _FANATICS_DF_CACHE
 
 
+_ADULT_AGE_TAGS = {"Men's", "Adult", "Women's"}
+_YOUTH_AGE_TAGS = {"Youth", "Boys'", "Girls'", "Toddler", "Infant"}
+
+_AUDIENCE_HINTS = [
+    # (keyword-substring, target age_groups set)
+    ("women",   {"Women's"}),
+    ("ladies",  {"Women's"}),
+    ("female",  {"Women's"}),
+    ("men",     {"Men's", "Adult"}),
+    ("male",    {"Men's", "Adult"}),
+    ("adult",   {"Men's", "Adult"}),
+    ("kid",     _YOUTH_AGE_TAGS),
+    ("kids",    _YOUTH_AGE_TAGS),
+    ("youth",   _YOUTH_AGE_TAGS),
+    ("child",   _YOUTH_AGE_TAGS),
+    ("boy",     {"Boys'", "Youth", "Toddler"}),
+    ("girl",    {"Girls'", "Youth", "Toddler"}),
+    ("toddler", {"Toddler", "Infant"}),
+    ("infant",  {"Infant", "Toddler"}),
+    ("baby",    {"Infant", "Toddler"}),
+]
+
+
+def _preferred_age_groups(keywords_lower: str) -> set[str]:
+    """Infer which age_group labels to prefer based on the user's keywords.
+    Returns the target set or the default adult set when no hint is present.
+    """
+    for needle, targets in _AUDIENCE_HINTS:
+        if needle in keywords_lower:
+            return targets
+    # Default: adult. Fixes the "Messi jersey → Youth T-shirt" surprise where
+    # the cheapest-matching item happened to be a kids' tee.
+    return {"Men's", "Adult"}
+
+
 def _pick_team_product(team: str, keywords: str = "") -> dict | None:
     """Return the best-ranked product row for `team` as a dict, or None if no
     inventory.
 
     Ranking (in order):
     1. In-stock first
-    2. **Every word in `keywords` counts as a required match** — products that
-       hit more of the terms rank higher. Empty keywords → all products tie.
-    3. If no keywords are passed, prefer 'jersey' in the name (default intent).
-    4. Prefer on-sale
-    5. Lowest price
+    2. Keyword match count (more matches = higher)
+    3. Preferred age_group (Adult by default; kids / women's when the
+       user's keywords signal that audience)
+    4. On-sale
+    5. Keyword 'jersey' in name (only used when caller passed no keywords)
+    6. Lowest price
+
+    If NO product matches ANY keyword term, silently fall back to the
+    default jersey/adult ranking so the tool never returns None when the
+    team has any inventory at all.
     """
     df = _fanatics_products()
     if df.empty:
@@ -413,15 +481,19 @@ def _pick_team_product(team: str, keywords: str = "") -> dict | None:
         return None
     names_lower = g["name"].str.lower().fillna("")
 
-    terms = [w for w in keywords.lower().split() if w]
+    kw_lower = keywords.lower()
+    preferred_ages = _preferred_age_groups(kw_lower)
+    age_rank = (~g["age_group"].isin(preferred_ages)).astype(int)
+
+    terms = [w for w in kw_lower.split() if w]
     if terms:
-        # Negative count of matched terms so lower = better match
         match_count = sum(names_lower.str.contains(t, regex=False).astype(int) for t in terms)
-        # If no product matches ANY term, fall back to default jersey preference
         if match_count.max() == 0:
+            # No product matched any term — fall back to default jersey ranking
             g = g.assign(
                 _instock=(~g["in_stock"]).astype(int),
                 _miss=1,
+                _age=age_rank,
                 _notkw=(~names_lower.str.contains("jersey")).astype(int),
                 _notsale=(~g["on_sale"]).astype(int),
             )
@@ -429,6 +501,7 @@ def _pick_team_product(team: str, keywords: str = "") -> dict | None:
             g = g.assign(
                 _instock=(~g["in_stock"]).astype(int),
                 _miss=-match_count,
+                _age=age_rank,
                 _notkw=0,
                 _notsale=(~g["on_sale"]).astype(int),
             )
@@ -436,12 +509,13 @@ def _pick_team_product(team: str, keywords: str = "") -> dict | None:
         g = g.assign(
             _instock=(~g["in_stock"]).astype(int),
             _miss=0,
+            _age=age_rank,
             _notkw=(~names_lower.str.contains("jersey")).astype(int),
             _notsale=(~g["on_sale"]).astype(int),
         )
 
-    g = g.sort_values(["_instock", "_miss", "_notkw", "_notsale", "price"])
-    return g.drop(columns=["_instock", "_miss", "_notkw", "_notsale"]).iloc[0].to_dict()
+    g = g.sort_values(["_instock", "_miss", "_age", "_notkw", "_notsale", "price"])
+    return g.drop(columns=["_instock", "_miss", "_age", "_notkw", "_notsale"]).iloc[0].to_dict()
 
 
 def _real_pricing(team: str, keywords: str = "") -> dict | None:
@@ -463,6 +537,8 @@ def _real_pricing(team: str, keywords: str = "") -> dict | None:
         "list_price": round(list_price, 2) if list_price else price,
         "product_name": product.get("name"),
         "manufacturer": product.get("manufacturer"),
+        "age_group": product.get("age_group"),
+        "gender": product.get("gender"),
         "in_stock": bool(product.get("in_stock")),
     }
     if on_sale:
@@ -619,7 +695,10 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
             p = _lookup_pricing(team, keywords=kw)
         if p:
             rec["pricing"] = p
-        # Also surface the concrete SKU dict (image + link) for the render
+        # Also surface the concrete SKU dict (image + link + age) for the
+        # render. age_group drives the small "👨 Men's / 👦 Youth" pill on
+        # the card so users don't click an adult item expecting kids sizing
+        # or vice versa.
         product = _pick_team_product(team, keywords=kw)
         if product:
             rec["product"] = {
@@ -627,6 +706,8 @@ def ask_claude(question: str, context: str, lang: str) -> dict:
                 "price": product.get("price"),
                 "image_url": product.get("image_url"),
                 "link": product.get("link"),
+                "age_group": product.get("age_group"),
+                "gender": product.get("gender"),
             }
 
     return {
