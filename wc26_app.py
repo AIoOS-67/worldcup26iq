@@ -826,36 +826,13 @@ def logo_data_url() -> str:
     return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
 
 
-@st.cache_data
-def load_fanatics_products() -> pd.DataFrame:
-    """Return the filtered Fanatics WC26 product feed (built by
-    build_fanatics_feed.py). Empty DataFrame if not present — callers should
-    fall back to mock pricing / generic search links in that case."""
-    p = _p("fanatics_products.parquet")
-    if not p.exists():
-        return pd.DataFrame()
-    return pd.read_parquet(p)
-
-
 def find_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
-    """Return one representative Fanatics SKU for `team` as a dict, or None if
-    the team has no inventory. Ranks in-stock products first, prefers on-sale,
-    then prefers names containing `prefer_keyword` (defaults to 'jersey'),
-    then lowest price. Used by merch_link() + pricing lookup."""
-    df = load_fanatics_products()
-    if df.empty:
-        return None
-    g = df[df["team"] == team]
-    if g.empty:
-        return None
-    kw = prefer_keyword.lower()
-    g = g.assign(
-        _instock=(~g["in_stock"]).astype(int),
-        _notsale=(~g["on_sale"]).astype(int),
-        _notkw=(~g["name"].str.lower().str.contains(kw, na=False)).astype(int),
-    )
-    g = g.sort_values(["_instock", "_notkw", "_notsale", "price"])
-    return g.drop(columns=["_instock", "_notsale", "_notkw"]).iloc[0].to_dict()
+    """Thin re-export of ask_model._pick_team_product so the same ranking
+    logic is used by merch_link() (this module) and the Claude pricing tool
+    (ask_model). Single source of truth for the Fanatics feed lookup avoids
+    the cross-module import race we hit earlier."""
+    from ask_model import _pick_team_product
+    return _pick_team_product(team, prefer_keyword=prefer_keyword)
 
 
 @st.cache_data

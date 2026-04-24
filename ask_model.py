@@ -349,17 +349,53 @@ PRICING_TOOL = {
 }
 
 
+_FANATICS_FEED_PATH = Path(__file__).resolve().parent / "data" / "fanatics_products.parquet"
+_FANATICS_DF_CACHE: pd.DataFrame | None = None
+
+
+def _fanatics_products() -> pd.DataFrame:
+    """Lazy-load and cache the filtered Fanatics feed parquet. Self-contained
+    inside ask_model.py — avoids a fragile cross-module import back into
+    wc26_app.py at tool-call time (which was failing silently in production
+    and forcing every pricing lookup onto the mock fallback)."""
+    global _FANATICS_DF_CACHE
+    if _FANATICS_DF_CACHE is not None:
+        return _FANATICS_DF_CACHE
+    if not _FANATICS_FEED_PATH.exists():
+        _FANATICS_DF_CACHE = pd.DataFrame()
+        return _FANATICS_DF_CACHE
+    try:
+        _FANATICS_DF_CACHE = pd.read_parquet(_FANATICS_FEED_PATH)
+    except Exception:
+        _FANATICS_DF_CACHE = pd.DataFrame()
+    return _FANATICS_DF_CACHE
+
+
+def _pick_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
+    """Return the best-ranked product row for `team` as a dict, or None if no
+    inventory. Ranks in-stock first, prefers name containing `prefer_keyword`,
+    prefers on-sale, then lowest price."""
+    df = _fanatics_products()
+    if df.empty:
+        return None
+    g = df[df["team"] == team]
+    if g.empty:
+        return None
+    kw = prefer_keyword.lower()
+    g = g.assign(
+        _instock=(~g["in_stock"]).astype(int),
+        _notkw=(~g["name"].str.lower().str.contains(kw, na=False)).astype(int),
+        _notsale=(~g["on_sale"]).astype(int),
+    )
+    g = g.sort_values(["_instock", "_notkw", "_notsale", "price"])
+    return g.drop(columns=["_instock", "_notsale", "_notkw"]).iloc[0].to_dict()
+
+
 def _real_pricing(team: str) -> dict | None:
     """Live pricing from the filtered Fanatics product feed (Impact-approved
     Apr 23 2026). Returns None when the team has no inventory — caller falls
     back to _mock_pricing() so the tool always returns something usable."""
-    # Delayed import to avoid pulling Streamlit into this module's import graph
-    # when build scripts import ask_model for its WC26_TEAMS list.
-    try:
-        from wc26_app import find_team_product
-    except Exception:
-        return None
-    product = find_team_product(team, prefer_keyword="jersey")
+    product = _pick_team_product(team, prefer_keyword="jersey")
     if not product:
         return None
 
@@ -576,14 +612,55 @@ def ask_gemini(question: str, context: str, lang: str) -> str:
 
 
 # ---------- routing ----------
+
+# Keywords that signal commerce / shopping / pricing intent. When the user
+# asks a question matching these AND hasn't explicitly @mentioned gemini,
+# the question is routed silently to Claude only — Gemini has no merch
+# tools and would just have to decline, wasting the user's attention.
+_COMMERCE_KW = [
+    # English
+    "buy", "buying", "purchase", "shop", "shopping", "shoppable",
+    "price", "pricing", "cost", "expensive", "cheap",
+    "deal", "deals", "discount", "sale", "promo", "coupon", "offer",
+    "jersey", "jerseys", "shirt", "gear", "merch", "merchandise",
+    "order", "checkout", "cart",
+    # Chinese
+    "买", "购买", "下单", "订购", "价钱", "价格", "多少钱",
+    "贵", "便宜", "打折", "折扣", "促销", "优惠", "代码",
+    "球衣", "球衫", "装备", "周边", "商品", "订单",
+    # Spanish
+    "comprar", "compra", "precio", "barato", "oferta", "descuento",
+    "camiseta",
+    # Portuguese
+    "preço", "barato", "caro", "desconto", "camisa",
+    # French
+    "acheter", "achat", "prix", "cher", "offre", "réduction", "maillot",
+]
+
+
+def _is_commerce_question(q: str) -> bool:
+    ql = q.lower()
+    return any(kw in ql for kw in _COMMERCE_KW)
+
+
 def parse_routing(question: str) -> tuple[str, str]:
-    """Return (target, cleaned_question). target in {'claude','gemini','both'}."""
+    """Return (target, cleaned_question). target in {'claude','gemini','both'}.
+
+    Routing rules:
+    - Explicit @claude / @gemini prefix → forced target (user knows what they want).
+    - Otherwise default 'both' — unless the question is a commerce /
+      shopping / pricing query, in which case target collapses to 'claude'
+      silently. Only Claude carries the merch + pricing tools; Gemini
+      would just have to decline, which clutters the UX.
+    """
     q = question.strip()
     low = q.lower()
     if low.startswith("@claude"):
         return "claude", q[len("@claude"):].strip(":,. ")
     if low.startswith("@gemini"):
         return "gemini", q[len("@gemini"):].strip(":,. ")
+    if _is_commerce_question(q):
+        return "claude", q
     return "both", q
 
 
