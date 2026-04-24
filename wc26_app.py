@@ -111,12 +111,19 @@ def _render_merch_card(rec: dict) -> str:
             )
         promo = pricing.get("promo_code")
         if promo:
+            # Prefer explicit promo_note (e.g. "Free shipping on orders $39+")
+            # when present; fall back to percent-off phrasing for legacy/mock
+            # pricing that uses promo_discount_pct.
+            promo_note = pricing.get("promo_note")
+            if promo_note:
+                promo_desc = promo_note
+            else:
+                promo_desc = f'extra −{pricing.get("promo_discount_pct", 0)}% off'
             price_html += (
                 f'<div style="margin-top:4px;font-size:0.78rem;color:#cfd7e8;">'
                 f'Code <code style="background:rgba(247,201,72,0.15);'
                 f'color:#f7c948;padding:1px 6px;border-radius:3px;'
-                f'font-weight:600;">{promo}</code> '
-                f'= extra −{pricing.get("promo_discount_pct", 0)}%</div>'
+                f'font-weight:600;">{promo}</code> · {promo_desc}</div>'
             )
         is_real = bool(pricing.get("_source"))
         disclaimer_text = (

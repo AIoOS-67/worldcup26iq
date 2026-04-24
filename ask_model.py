@@ -218,7 +218,7 @@ The UI language setting is the ONLY source of truth for your output language.
 # Team merch & shopping (agentic — always ask "for whom?" first if unclear)
 You have two merch tools:
 
-1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / _source.
+1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / promo_code / promo_note / _source. The returned `promo_code` field is the currently-active Fanatics code you should mention in your reply (e.g. "use code **39SHIP** for free shipping on orders $39+"). Don't invent codes — use exactly what the tool returns, and only if the order total would actually benefit.
 2. `recommend_team_merch(team, pitch, keywords?)` — append a shoppable card (crest + product photo + SALE badge + deep link) below your written reply.
 
 ## PLAYER → TEAM INFERENCE (never ask a team question the user already answered)
@@ -600,10 +600,29 @@ def _mock_pricing(team: str) -> dict:
     return out
 
 
+# Fanatics public free-shipping code. Always active, no partner approval
+# needed — displayed as a sitewide banner on fanatics.com. Attaching it to
+# every pricing lookup so Claude can mention it and the card footer shows
+# the code chip. Swap to a brand-exclusive partner code once approved via
+# Impact → Promo Codes → Requests.
+FANATICS_PUBLIC_PROMO = {
+    "promo_code": "39SHIP",
+    "promo_note": "Free shipping on orders $39+",
+}
+
+
 def _lookup_pricing(team: str, keywords: str = "") -> dict:
-    """Unified pricing resolver: real feed first, mock fallback."""
+    """Unified pricing resolver: real feed first, mock fallback. Always
+    attaches the Fanatics public free-shipping promo so both Claude's text
+    and the rendered card can surface it."""
     real = _real_pricing(team, keywords=keywords)
-    return real if real else _mock_pricing(team)
+    out = real if real else _mock_pricing(team)
+    # Override any seeded/mock promo with the real public one. Drop any
+    # stale promo_discount_pct field (39SHIP is free-shipping, not %-off).
+    out["promo_code"] = FANATICS_PUBLIC_PROMO["promo_code"]
+    out["promo_note"] = FANATICS_PUBLIC_PROMO["promo_note"]
+    out.pop("promo_discount_pct", None)
+    return out
 
 
 # ---------- Claude ----------
