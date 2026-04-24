@@ -7,10 +7,12 @@ or the script directory.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -874,6 +876,111 @@ def logo_data_url() -> str:
     return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
 
 
+# ---------- Impact.com live earnings (closes the "AI → commission" loop) ----------
+@st.cache_data(ttl=300)   # 5-minute cache so we don't hammer Impact's API on refresh
+def load_impact_earnings() -> dict:
+    """Pull live conversion data from the Impact.com Partner REST API and
+    summarise it so the Hero page can show a "live commissions to date" card.
+
+    Credentials are read in priority order from:
+      1. Streamlit secrets  (IMPACT_SID, IMPACT_TOKEN)
+      2. Environment variables
+      3. `.streamlit/secrets.toml` if running locally
+
+    Returns a dict:
+      {
+        "enabled":        bool,   # False when creds missing or API call fails
+        "total_gross":    float,  # sum of Amount across all actions
+        "total_pending":  float,  # sum of Payout where State == PENDING
+        "total_approved": float,  # approved but not yet paid
+        "total_paid":     float,
+        "total_locked":   float,
+        "total_reversed": float,
+        "action_count":   int,
+        "latest_action":  str,    # ISO timestamp of newest action
+        "error":          str | None,
+      }
+    The Hero renderer only surfaces a card when `enabled` is True, so a misconfig
+    never breaks public deploys."""
+    try:
+        sid = st.secrets.get("IMPACT_SID", None)  # type: ignore[union-attr]
+        token = st.secrets.get("IMPACT_TOKEN", None)  # type: ignore[union-attr]
+    except Exception:
+        sid = token = None
+    sid = sid or os.environ.get("IMPACT_SID")
+    token = token or os.environ.get("IMPACT_TOKEN")
+    if not sid or not token:
+        return {"enabled": False, "error": None}
+
+    try:
+        resp = requests.get(
+            f"https://api.impact.com/Mediapartners/{sid}/Actions",
+            auth=(sid, token),
+            headers={"Accept": "application/json"},
+            params={"PageSize": 2000},
+            timeout=8,
+        )
+    except Exception as e:
+        return {"enabled": False, "error": f"request failed: {type(e).__name__}"}
+    if resp.status_code != 200:
+        return {"enabled": False, "error": f"HTTP {resp.status_code}"}
+
+    try:
+        data = resp.json()
+    except Exception:
+        return {"enabled": False, "error": "non-JSON response"}
+
+    actions = data.get("Actions") or []
+    if isinstance(actions, dict):  # single-item shortcut some APIs use
+        actions = [actions]
+
+    buckets = {"PENDING": 0.0, "APPROVED": 0.0, "PAID": 0.0, "LOCKED": 0.0, "REVERSED": 0.0}
+    total_gross = 0.0
+    latest = ""
+    rows = []
+    for a in actions:
+        state = (a.get("State") or "").upper()
+        try:
+            payout = float(a.get("Payout") or 0)
+        except (TypeError, ValueError):
+            payout = 0.0
+        try:
+            amount = float(a.get("Amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0.0
+        total_gross += amount
+        if state in buckets:
+            buckets[state] += payout
+        d = a.get("CreationDate") or a.get("EventDate") or ""
+        if d > latest:
+            latest = d
+        rows.append({
+            "date": (d or "")[:10],
+            "campaign": a.get("CampaignName") or a.get("CampaignId") or "",
+            "tracker": a.get("ActionTrackerName") or "",
+            "state": state,
+            "amount": amount,
+            "payout": payout,
+            "order_id": a.get("OrderId") or a.get("Oid") or "",
+            "action_id": a.get("Id") or "",
+        })
+    rows.sort(key=lambda r: r.get("date", ""), reverse=True)
+
+    return {
+        "enabled": True,
+        "total_gross": round(total_gross, 2),
+        "total_pending": round(buckets["PENDING"], 2),
+        "total_approved": round(buckets["APPROVED"], 2),
+        "total_paid": round(buckets["PAID"], 2),
+        "total_locked": round(buckets["LOCKED"], 2),
+        "total_reversed": round(buckets["REVERSED"], 2),
+        "action_count": len(actions),
+        "latest_action": latest,
+        "rows": rows,
+        "error": None,
+    }
+
+
 def find_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
     """Thin re-export of ask_model._pick_team_product so the same ranking
     logic is used by merch_link() (this module) and the Claude pricing tool
@@ -1263,9 +1370,22 @@ PAGE_KEYS = [
     ("calib",    t("nav_calib")),
     ("method",   t("nav_method")),
 ]
+
 page_labels = [lbl for _, lbl in PAGE_KEYS]
 page_label = st.sidebar.radio(t("navigate"), page_labels, index=0)
 page_id = dict(zip(page_labels, [k for k, _ in PAGE_KEYS]))[page_label]
+
+# Admin page is NOT listed in the sidebar — it's a private dashboard. Only
+# opens when the URL carries `?admin=1` (deliberate entry point), OR after a
+# successful password unlock earlier this session. The page_id override
+# bypasses whatever the sidebar radio happens to say.
+_admin_mode = (
+    st.query_params.get("admin") == "1"
+    or st.session_state.get("admin_authed", False)
+)
+if _admin_mode:
+    page_id = "admin"
+
 st.sidebar.markdown("---")
 st.sidebar.caption(t("sidebar_foot"))
 
@@ -1333,6 +1453,9 @@ if page_id == "hero":
         """,
         unsafe_allow_html=True,
     )
+
+    # (Live Fanatics commissions card moved to password-gated Admin page —
+    # public Hero shouldn't expose affiliate earnings.)
 
     # Top 5 model champions
     top = probs.sort_values("p_W", ascending=False).head(5).reset_index(drop=True)
@@ -2362,3 +2485,139 @@ elif page_id == "method":
     st.markdown(f"### {t('method_h_sim')}\n\n{t('method_p_sim')}")
     st.markdown(f"### {t('method_h_calib')}\n\n{t('method_p_calib')}")
     st.markdown(f"### {t('method_h_not')}\n\n{t('method_p_not')}")
+
+
+# ---------- Admin (password-gated dashboard of live Impact earnings) ----------
+elif page_id == "admin":
+    st.markdown(f'<div class="section-title">{t("admin_title")}</div>',
+                unsafe_allow_html=True)
+    st.markdown(f'<p class="section-caption">{t("admin_caption")}</p>',
+                unsafe_allow_html=True)
+
+    # Password gate — only bypassed after a correct entry in this session.
+    _configured_pw = None
+    try:
+        _configured_pw = st.secrets.get("ADMIN_PASSWORD", None)  # type: ignore[union-attr]
+    except Exception:
+        _configured_pw = None
+    _configured_pw = _configured_pw or os.environ.get("ADMIN_PASSWORD")
+
+    if not st.session_state.get("admin_authed", False):
+        if not _configured_pw:
+            st.warning(t("admin_no_pw_configured"))
+            st.stop()
+        with st.form("admin_login_form"):
+            pw = st.text_input(t("admin_pw_prompt"), type="password")
+            submitted = st.form_submit_button(t("admin_pw_submit"))
+        if submitted:
+            if pw == _configured_pw:
+                st.session_state["admin_authed"] = True
+                st.rerun()
+            else:
+                st.error(t("admin_pw_wrong"))
+        st.stop()
+
+    # Logout in the sidebar (session-only)
+    with st.sidebar:
+        if st.button(f"🔒 {t('admin_logout')}", key="admin_logout_btn"):
+            st.session_state["admin_authed"] = False
+            st.rerun()
+
+    # Fetch live earnings via the Impact API
+    earn = load_impact_earnings()
+    if not earn.get("enabled"):
+        err = earn.get("error") or t("admin_no_creds")
+        st.error(f"Impact API unavailable: {err}")
+        st.info(
+            "Configure **IMPACT_SID** and **IMPACT_TOKEN** in Streamlit secrets "
+            "(or environment variables), then reload this page."
+        )
+        st.stop()
+
+    pending = earn["total_pending"]
+    approved = earn["total_approved"]
+    paid = earn["total_paid"]
+    locked = earn["total_locked"]
+    net = pending + approved + paid + locked
+    gross = earn["total_gross"]
+    actions = earn["action_count"]
+    latest = earn["latest_action"] or "—"
+    plural = "" if actions == 1 else "s"
+
+    # Summary card (same green style as before)
+    st.markdown(
+        f"""
+        <div class="hero" style="background:linear-gradient(135deg,
+             rgba(61,214,140,0.08) 0%, rgba(247,201,72,0.06) 100%);
+             border:1px solid rgba(61,214,140,0.25);">
+          <div class="section-title" style="margin-bottom:6px;">{t('earnings_title')}</div>
+          <p class="subtitle" style="margin-bottom:16px;">{t('earnings_caption')}</p>
+          <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+              <div class="label" style="font-size:0.72rem;color:#94a3c5;
+                   letter-spacing:0.06em;text-transform:uppercase;">
+                {t('earnings_pending')} + {t('earnings_approved')}
+              </div>
+              <div class="value" style="font-size:2.6rem;color:#3dd68c;
+                   font-weight:700;line-height:1.1;">${net:,.2f}</div>
+              <div class="delta muted" style="font-size:0.8rem;">
+                ${pending:,.2f} {t('earnings_pending').lower()} ·
+                ${approved:,.2f} {t('earnings_approved').lower()} ·
+                {t('earnings_actions', n=actions, plural=plural)}
+              </div>
+            </div>
+            <div>
+              <div class="label" style="font-size:0.72rem;color:#94a3c5;
+                   letter-spacing:0.06em;text-transform:uppercase;">
+                {t('earnings_gross')}
+              </div>
+              <div class="value" style="font-size:2rem;color:#e8edf7;
+                   font-weight:600;line-height:1.1;">${gross:,.2f}</div>
+              <div class="delta muted" style="font-size:0.8rem;">
+                via Impact.com · Publisher ID 7225697
+              </div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Detailed conversion table
+    st.markdown(f'<div class="section-title" style="margin-top:20px;">'
+                f'{t("admin_conversions_title")}</div>',
+                unsafe_allow_html=True)
+    rows = earn.get("rows") or []
+    if not rows:
+        st.info(t("admin_no_conversions_yet"))
+    else:
+        df = pd.DataFrame(rows)[[
+            "date", "campaign", "tracker", "state", "amount", "payout", "order_id"
+        ]]
+        df.columns = [
+            t("admin_col_date"),
+            t("admin_col_campaign"),
+            t("admin_col_tracker"),
+            t("admin_col_state"),
+            t("admin_col_amount"),
+            t("admin_col_payout"),
+            t("admin_col_order"),
+        ]
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                t("admin_col_amount"): st.column_config.NumberColumn(
+                    t("admin_col_amount"), format="$%.2f"),
+                t("admin_col_payout"): st.column_config.NumberColumn(
+                    t("admin_col_payout"), format="$%.2f"),
+            },
+        )
+    st.caption(f"{t('admin_last_action')}: {latest}  ·  "
+               f"{t('admin_cache_note')}")
+
+    # Manual refresh
+    if st.button(f"🔄 {t('admin_refresh_now')}", key="admin_refresh_btn"):
+        load_impact_earnings.clear()
+        st.rerun()
