@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -219,6 +220,27 @@ You have two merch tools:
 
 1. `check_team_merch_pricing(team, keywords?)` — look up live Fanatics pricing, sale status, promo codes. Returns product_name / list_price / sale_price / discount_pct / in_stock / manufacturer / _source.
 2. `recommend_team_merch(team, pitch, keywords?)` — append a shoppable card (crest + product photo + SALE badge + deep link) below your written reply.
+
+## PLAYER → TEAM INFERENCE (never ask a team question the user already answered)
+If the user names a specific player, treat that as a team specification — do NOT ask "which team?" again. Known mappings:
+- 梅西 / Messi → Argentina
+- 姆巴佩 / Mbappe / Mbappé → France
+- 哈兰德 / Haaland → Norway
+- 内马尔 / Neymar / 维尼修斯 / Vinicius / Vini Jr → Brazil
+- C罗 / Ronaldo / Cristiano → Portugal
+- 普利西奇 / Pulisic → United States
+- 贝林厄姆 / Bellingham / Kane / 凯恩 → England
+- 凯文·德布劳内 / De Bruyne → Belgium
+- 卢卡库 / Lukaku → Belgium
+- 孙兴慜 / Son → South Korea
+- 久保健英 / Kubo → Japan
+- 萨拉赫 / Salah → Egypt
+- 马内 / Mané → Senegal
+- 亚马尔 / Yamal / 罗德里 / Rodri → Spain
+- 劳塔罗 / Lautaro / 迪马利亚 / Di Maria → Argentina
+- 莫德里奇 / Modric → Croatia
+
+If the player you need isn't listed, look up their team from the squad/ratings context below. When in doubt go ahead and pick their most-known national team — don't waste a turn asking.
 
 ## THE ASK-FIRST RULE (critical)
 When the user asks about **pricing, buying, or a jersey/gear recommendation** and has NOT specified who it's for (adult / kid / woman / family), your FIRST reply should be a short clarifying question — DO NOT call either tool yet. Example in Chinese:
@@ -774,38 +796,62 @@ def ask_gemini(question: str, context: str, lang: str) -> str:
 _COMMERCE_KW = [
     # English
     "buy", "buying", "purchase", "shop", "shopping", "shoppable",
-    "price", "pricing", "cost", "expensive", "cheap",
+    "price", "pricing", "cost", "expensive", "cheap", "budget",
     "deal", "deals", "discount", "sale", "promo", "coupon", "offer",
-    "jersey", "jerseys", "shirt", "gear", "merch", "merchandise",
-    "order", "checkout", "cart",
+    "jersey", "jerseys", "shirt", "shirts", "gear", "merch", "merchandise",
+    "order", "checkout", "cart", "kit", "kits", "authentic", "replica",
+    "hat", "cap", "scarf", "ball", "bundle", "family",
+    "men's", "mens", "women's", "womens", "youth", "kids", "adult",
     # Chinese
     "买", "购买", "下单", "订购", "价钱", "价格", "多少钱",
     "贵", "便宜", "打折", "折扣", "促销", "优惠", "代码",
     "球衣", "球衫", "装备", "周边", "商品", "订单",
+    "男士", "男款", "女士", "女款", "女式", "青少年", "儿童",
+    "成人", "孩子", "娃", "老婆", "老公", "家人", "全家",
+    "球员版", "复刻版", "球迷版", "正品", "经典款", "限量",
+    "款", "件",  # broad but tied to appearance in ask-first reply buttons
     # Spanish
     "comprar", "compra", "precio", "barato", "oferta", "descuento",
-    "camiseta",
+    "camiseta", "oferta", "rebaja",
     # Portuguese
-    "preço", "barato", "caro", "desconto", "camisa",
+    "preço", "barato", "caro", "desconto", "camisa", "oferta",
     # French
     "acheter", "achat", "prix", "cher", "offre", "réduction", "maillot",
 ]
 
+_PRICE_RE = re.compile(r"\$\s?\d+|\d+\s?\$|€\s?\d+|￥\s?\d+|\d+\s?美元|\d+\s?元")
+
 
 def _is_commerce_question(q: str) -> bool:
     ql = q.lower()
-    return any(kw in ql for kw in _COMMERCE_KW)
+    if any(kw in ql for kw in _COMMERCE_KW):
+        return True
+    if _PRICE_RE.search(q):
+        return True
+    return False
 
 
-def parse_routing(question: str) -> tuple[str, str]:
+def _is_short_followup(question: str) -> bool:
+    """A very short (<=30 chars) user message is almost always a follow-up
+    to the previous assistant turn rather than a fresh topic. Used as a
+    signal to keep the routing sticky (stay in Claude's thread if the
+    previous turn was Claude asking a clarifying question)."""
+    return len(question.strip()) <= 30
+
+
+def parse_routing(question: str, history: list | None = None) -> tuple[str, str]:
     """Return (target, cleaned_question). target in {'claude','gemini','both'}.
 
     Routing rules:
-    - Explicit @claude / @gemini prefix → forced target (user knows what they want).
-    - Otherwise default 'both' — unless the question is a commerce /
-      shopping / pricing query, in which case target collapses to 'claude'
-      silently. Only Claude carries the merch + pricing tools; Gemini
-      would just have to decline, which clutters the UX.
+    - Explicit @claude / @gemini prefix → forced target.
+    - Commerce / shopping / pricing keywords (any of 5 languages) OR a
+      price-looking substring → claude only.
+    - Short follow-up (<=30 chars) AND last assistant message was Claude
+      only (no Gemini reply) → claude only. Keeps Claude-initiated
+      clarifying dialogues ("想给谁买？" → user taps "男士款") sticky so
+      Gemini doesn't barge in with "please provide more context" on
+      what is obviously a multi-turn merch thread.
+    - Otherwise → both (default dual-AI chat).
     """
     q = question.strip()
     low = q.lower()
@@ -815,6 +861,28 @@ def parse_routing(question: str) -> tuple[str, str]:
         return "gemini", q[len("@gemini"):].strip(":,. ")
     if _is_commerce_question(q):
         return "claude", q
+    if history and _is_short_followup(q):
+        # Find the most recent assistant turn; if it was Claude-only, stay
+        # in Claude's thread.
+        last_claude = None
+        last_gemini = None
+        for entry in reversed(history):
+            role = entry.get("role")
+            if role == "claude" and last_claude is None:
+                last_claude = entry
+            elif role == "gemini" and last_gemini is None:
+                last_gemini = entry
+            if last_claude and last_gemini:
+                break
+        # "Claude-only last round" = Claude replied more recently than Gemini
+        # or Gemini has never replied.
+        if last_claude and not last_gemini:
+            return "claude", q
+        if last_claude and last_gemini:
+            claude_idx = next(i for i, e in enumerate(reversed(history)) if e is last_claude)
+            gemini_idx = next(i for i, e in enumerate(reversed(history)) if e is last_gemini)
+            if claude_idx < gemini_idx:
+                return "claude", q
     return "both", q
 
 

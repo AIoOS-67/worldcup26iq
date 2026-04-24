@@ -1827,7 +1827,7 @@ elif page_id == "ask":
         user_q = preset
 
     if user_q and user_q.strip():
-        target, clean_q = parse_routing(user_q)
+        target, clean_q = parse_routing(user_q, history=st.session_state.get("ask_history"))
         st.session_state["ask_history"].append({"role": "user", "content": user_q})
 
         # Show a "typing" bubble for whoever we're about to ask
