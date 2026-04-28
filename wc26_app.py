@@ -1906,12 +1906,18 @@ elif page_id == "whatif":
                     st.markdown(rank_stack_html, unsafe_allow_html=True)
                 with team_col:
                     teams = groups[gkey]
-                    code_to_label = {tm: f"≡  {flag(tm)} {team_name(tm)}" for tm in teams}
+                    # Tail each team with its baseline p_R32 (advance prob) so
+                    # the user sees the model's intrinsic rating next to the
+                    # name even after dragging — matches Groups Overview.
+                    code_to_label = {
+                        tm: f"≡  {flag(tm)} {team_name(tm)} — {adv_lookup.get(tm, 0.0):.0%}"
+                        for tm in teams
+                    }
                     label_to_code = {v: k for k, v in code_to_label.items()}
                     initial_items = list(code_to_label.values())
                     sorted_labels = sort_items(
                         initial_items,
-                        key=f"sort_{gkey}",
+                        key=f"sort_v2_{gkey}",
                         direction="vertical",
                         custom_style=sortable_style,
                     )
@@ -1932,7 +1938,7 @@ elif page_id == "whatif":
     if c3.button(t("whatif_reset")):
         st.session_state["wc26_dragged"] = set()
         for gkey in group_keys:
-            st.session_state.pop(f"sort_{gkey}", None)
+            st.session_state.pop(f"sort_v2_{gkey}", None)
         st.rerun()
 
     if run:
