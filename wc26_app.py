@@ -1767,6 +1767,34 @@ elif page_id == "whatif":
     # 3rd-placed teams advance only if among top 8 across all 12 groups.
     from streamlit_sortables import sort_items
 
+    sortable_style = """
+    .sortable-component { background: transparent; padding: 0; border: none; }
+    .sortable-container { background: transparent; padding: 0; border: none; }
+    .sortable-container-body {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+        padding: 0 !important;
+    }
+    .sortable-item {
+        width: 100% !important;
+        background: #1b2742 !important;
+        color: #e8edf7 !important;
+        border: 1px solid #2a3b5f !important;
+        border-radius: 6px !important;
+        padding: 10px 12px !important;
+        margin: 0 !important;
+        font-size: 0.9rem !important;
+        cursor: grab !important;
+        box-sizing: border-box !important;
+    }
+    .sortable-item:hover {
+        background: #243352 !important;
+        border-color: #3a4d75 !important;
+    }
+    .sortable-item:active { cursor: grabbing !important; }
+    """
+
     new_locks: dict[str, dict[str, str]] = {}
     group_keys = list(groups.keys())
     for i in range(0, len(group_keys), 4):
@@ -1780,10 +1808,15 @@ elif page_id == "whatif":
                     unsafe_allow_html=True,
                 )
                 teams = groups[gkey]
-                code_to_label = {tm: f"{flag(tm)} {team_name(tm)}" for tm in teams}
+                code_to_label = {tm: f"≡  {flag(tm)} {team_name(tm)}" for tm in teams}
                 label_to_code = {v: k for k, v in code_to_label.items()}
                 initial_items = list(code_to_label.values())
-                sorted_labels = sort_items(initial_items, key=f"sort_{gkey}")
+                sorted_labels = sort_items(
+                    initial_items,
+                    key=f"sort_{gkey}",
+                    direction="vertical",
+                    custom_style=sortable_style,
+                )
                 if sorted_labels != initial_items:
                     st.session_state["wc26_dragged"].add(gkey)
                 if gkey in st.session_state["wc26_dragged"] and len(sorted_labels) >= 3:
