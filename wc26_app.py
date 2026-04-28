@@ -1816,13 +1816,17 @@ elif page_id == "whatif":
     # SortableJS reorders DOM nodes on drag, so :nth-child(N) rules automatically
     # repaint colors as the user shuffles teams between positions.
     sortable_style = """
-    .sortable-component { background: transparent; padding: 0; border: none; }
-    .sortable-container { background: transparent; padding: 0; border: none; }
+    /* iframe body has the browser default 8px margin — kills row alignment
+       with the static .rank-stack on the left column. */
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .sortable-component { background: transparent; padding: 0; margin: 0; border: none; }
+    .sortable-container { background: transparent; padding: 0; margin: 0; border: none; }
     .sortable-container-body {
         display: flex !important;
         flex-direction: column !important;
         gap: 6px !important;
         padding: 0 !important;
+        margin: 0 !important;
     }
     .sortable-item {
         width: 100% !important;
