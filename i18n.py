@@ -617,11 +617,11 @@ T: dict[str, dict[str, str]] = {
                      "es": "API key de Claude no configurada. Configura `ANTHROPIC_API_KEY` en los secrets de Streamlit Cloud.",
                      "pt": "Chave da API Claude não configurada. Configure `ANTHROPIC_API_KEY` nos secrets do Streamlit Cloud.",
                      "fr": "Clé API Claude non configurée. Définissez `ANTHROPIC_API_KEY` dans les secrets Streamlit Cloud."},
-    "ask_router_hint":{"en": "💬 <code>@claude</code> → Claude only · <code>@gemini</code> → Gemini only · plain question = both AIs answer",
-                       "zh": "💬 <code>@claude</code> → Claude 独答 · <code>@gemini</code> → Gemini 独答 · 直接问 = 两个 AI 都发言",
-                       "es": "💬 <code>@claude</code> → solo Claude · <code>@gemini</code> → solo Gemini · pregunta directa = ambas IAs responden",
-                       "pt": "💬 <code>@claude</code> → só Claude · <code>@gemini</code> → só Gemini · pergunta direta = ambas IAs respondem",
-                       "fr": "💬 <code>@claude</code> → Claude seul · <code>@gemini</code> → Gemini seul · question directe = les deux IA répondent"},
+    "ask_router_hint":{"en": "💬 Powered by Claude",
+                       "zh": "💬 由 Claude 提供答案",
+                       "es": "💬 Con tecnología de Claude",
+                       "pt": "💬 Com tecnologia da Claude",
+                       "fr": "💬 Propulsé par Claude"},
 
     # ---------- Stage Reach ----------
     "stage_title":  {"en": "📊 Stage-Reach Probabilities", "zh": "📊 晋级阶段概率",
