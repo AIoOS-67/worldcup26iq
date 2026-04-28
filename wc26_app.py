@@ -1399,6 +1399,68 @@ if page_id == "hero":
     all_base = summary[(summary["year"] == "ALL") & (summary["model"] == "Uniform(1/3)")].iloc[0]
     skill = 1 - all_dc["brier"] / all_base["brier"]
 
+    # Live countdown to kickoff — 2026-06-11 11:00 CDMX local time (UTC-6)
+    # = 2026-06-11 17:00 UTC. JS reads the user's device clock (Date.now is
+    # UTC ms), so the diff is timezone-correct for every visitor. Embedded as
+    # self-contained HTML+JS so the digits tick every second without Streamlit
+    # reruns.
+    _countdown_html = f"""
+    <div style="background:linear-gradient(135deg,#0e3d2d 0%,#1a5a43 100%);
+                border:1px solid rgba(247,201,72,0.25);border-radius:12px;
+                padding:20px 16px 18px;margin:0 0 18px;text-align:center;
+                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <div style="font-weight:700;font-size:1.15rem;color:#f7c948;
+                  letter-spacing:0.02em;">⚽ {t('countdown_title')}</div>
+      <div style="font-size:0.82rem;color:#cfd7e8;opacity:0.85;margin-top:4px;">
+        {t('countdown_subtitle')}</div>
+      <div id="wc26-countdown" style="display:flex;justify-content:center;gap:14px;
+                                       margin-top:14px;flex-wrap:wrap;"></div>
+      <div id="wc26-countdown-until" style="font-size:0.78rem;color:#94a3c5;
+                                              margin-top:10px;">{t('countdown_until')}</div>
+    </div>
+    <script>
+      (function() {{
+        const TARGET = new Date('2026-06-11T17:00:00Z').getTime();
+        const LABELS = {{
+          days: {t('countdown_days')!r},
+          hrs:  {t('countdown_hrs')!r},
+          min:  {t('countdown_min')!r},
+          sec:  {t('countdown_sec')!r},
+        }};
+        const LIVE_TEXT = {t('countdown_live')!r};
+        const el = document.getElementById('wc26-countdown');
+        const untilEl = document.getElementById('wc26-countdown-until');
+        function cell(value, label) {{
+          return '<div style="min-width:64px;padding:8px 12px;' +
+                 'background:rgba(255,255,255,0.06);border-radius:8px;">' +
+                 '<div style="font-size:1.8rem;font-weight:700;color:#fff;' +
+                 'line-height:1;">' + String(value).padStart(2,'0') + '</div>' +
+                 '<div style="font-size:0.7rem;color:#cfd7e8;margin-top:4px;' +
+                 'letter-spacing:0.04em;">' + label + '</div></div>';
+        }}
+        function tick() {{
+          const now = Date.now();
+          const diff = TARGET - now;
+          if (diff <= 0) {{
+            el.innerHTML = '<div style="font-size:1.25rem;font-weight:700;' +
+                           'color:#3dd68c;padding:12px;">' + LIVE_TEXT + '</div>';
+            untilEl.style.display = 'none';
+            return false;
+          }}
+          const d = Math.floor(diff / 86400000);
+          const h = Math.floor((diff % 86400000) / 3600000);
+          const m = Math.floor((diff % 3600000) / 60000);
+          const s = Math.floor((diff % 60000) / 1000);
+          el.innerHTML = cell(d, LABELS.days) + cell(h, LABELS.hrs) +
+                         cell(m, LABELS.min) + cell(s, LABELS.sec);
+          return true;
+        }}
+        if (tick()) setInterval(tick, 1000);
+      }})();
+    </script>
+    """
+    _components.html(_countdown_html, height=190, scrolling=False)
+
     best_under = lb[lb["direction"] == "UNDER"].iloc[0]
     best_over = lb[lb["direction"] == "OVER"].iloc[0]
 
@@ -1935,8 +1997,7 @@ elif page_id == "ask":
         st.session_state["ask_history"] = []  # list of {"role","content"} in time order
 
     st.markdown(
-        '<div class="wc-hint">💬 <code>@claude</code> → Claude 独答 · '
-        '<code>@gemini</code> → Gemini 独答 · 直接问 = 两个 AI 都发言</div>',
+        f'<div class="wc-hint">{t("ask_router_hint")}</div>',
         unsafe_allow_html=True,
     )
 
