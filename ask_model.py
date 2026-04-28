@@ -262,9 +262,27 @@ If the user's message already contains a clear audience signal, go straight to t
 |---|---|
 | "给我自己" / "adult" / "my size" / "I want" / "男士" / "成人" / "自己穿" | call tools with `keywords="men's"` (or `"Men's <player>"`) |
 | "给老婆" / "wife" / "women" / "女款" / "女士" / "her" | `keywords="women's"` (or `"Women's <player>"`) |
-| "给娃" / "kids" / "son" / "daughter" / "青少年" / "儿童" / "孩子" | `keywords="youth"` |
-| "全家" / "family" / "bundle" / "一家人" / "夫妻" | call `recommend_team_merch` TWO–THREE TIMES for the same team with `keywords="men's <player>"`, `keywords="women's <player>"`, `keywords="youth <player>"` — user will see one card per family member |
+| "给娃" / "kids" / "son" / "daughter" / "青少年" / "儿童" / "孩子" | `keywords="authentic youth"` |
+| "全家" / "family" / "bundle" / "一家人" / "夫妻" | call `recommend_team_merch` TWO–THREE TIMES for the same team with `keywords="authentic men's <player>"`, `keywords="authentic women's <player>"`, `keywords="authentic youth <player>"` — user will see one card per family member |
 | Specific player name ("Messi" / "Pulisic" / "Mbappe" / "梅西" / "姆巴佩") | include the player name in `keywords` alongside whatever audience was specified; if audience is still unclear, ASK FIRST |
+
+## JERSEY TIER RULE — ALWAYS Authentic FIRST (critical)
+For every jersey / kit / 球衣 request, **always include `authentic` in the `keywords` argument**, alongside the audience and player name. The Authentic kit (~$130-180, stitched, official player version) is the gold-standard recommendation. Only fall back to a cheaper tier when Authentic isn't in stock or the user explicitly asks for cheaper.
+
+| User intent | `keywords` to pass |
+|---|---|
+| "I want Messi jersey" + men's | `"authentic men's Messi"` |
+| "Argentina jersey" (no player) | `"authentic men's"` |
+| Kid's jersey | `"authentic youth"` |
+| Women's jersey | `"authentic women's"` |
+| User typed "replica" / "复刻" | `"replica men's <player>"` (respect them) |
+| User typed "便宜" / "cheap" / "tee" / "T-shirt" | `"tee <player>"` (respect them) |
+
+**When you reply, name the tier honestly**:
+- Got Authentic back → "$150 official **Authentic** Messi #10 — the real stitched player kit"
+- Tool returned a Tee or Replica (no Authentic in stock) → say it: "Authentic isn't in the feed for him today — closest is the Replica at ~$90 / official Name & Number Tee at ~$35. Want me to flag the Authentic Argentina home jersey instead and you customise the back with MESSI 10?"
+
+Never silently downgrade a user from Authentic to a Tee without telling them.
 
 ## CARD QUANTITY RULES
 - Usually 0 cards per answer.
@@ -359,15 +377,16 @@ MERCH_TOOL = {
             "keywords": {
                 "type": "string",
                 "description": (
-                    "Optional space-separated search terms to pick a SPECIFIC "
-                    "product from the team's catalogue, instead of the default "
-                    "cheapest-jersey fallback. Examples: 'Messi' for the Messi "
-                    "signature jersey, 'authentic 2024 home' for the premium "
-                    "authentic home kit, 'hat' for headwear, 'kids' for youth "
-                    "sizing. Product names in the feed are rich (player, year, "
-                    "gender, replica/authentic, home/away), so passing even 1–2 "
-                    "words dramatically sharpens the recommendation. Leave "
-                    "empty when the user hasn't specified anything."
+                    "Space-separated search terms used to rank the catalogue. "
+                    "**Default for any jersey request: include 'authentic'** so "
+                    "the most premium tier (~$130-180 stitched player kit) "
+                    "surfaces first. Combine with audience + player name when "
+                    "known: 'authentic men's Messi', 'authentic women's', "
+                    "'authentic youth Mbappe'. Only drop 'authentic' if the "
+                    "user explicitly asked for a cheaper tier — then pass that "
+                    "word ('replica', 'tee', 'cheap') or a non-jersey item "
+                    "('scarf', 'hat'). Product names in the feed are rich "
+                    "(player, year, gender, replica/authentic, home/away)."
                 ),
             },
         },
@@ -408,11 +427,13 @@ PRICING_TOOL = {
             "keywords": {
                 "type": "string",
                 "description": (
-                    "Optional space-separated search terms to pick a SPECIFIC "
-                    "product. Use when the user asked about a named player "
-                    "('Messi', 'Mbappe'), a specific gear type ('hat', "
-                    "'scarf', 'ball'), or quality tier ('authentic', "
-                    "'replica'). Leave empty for a generic team-jersey lookup."
+                    "Space-separated search terms. **Default for any jersey "
+                    "request: include 'authentic'** so the premium ~$150 "
+                    "stitched kit prices first instead of a $35 Tee. Combine "
+                    "with audience + player: 'authentic men's Messi'. Drop "
+                    "'authentic' only when the user explicitly asks for a "
+                    "cheaper tier ('replica', 'tee', 'cheap', '便宜') or a "
+                    "non-jersey item ('hat', 'scarf', 'ball')."
                 ),
             },
         },
@@ -478,18 +499,45 @@ def _preferred_age_groups(keywords_lower: str) -> set[str]:
     return {"Men's", "Adult"}
 
 
+def _jersey_tier(name_lower: str) -> int:
+    """Rank a product by how 'premium' its jersey tier is.
+
+    0 = Authentic (stitched player jersey, ~$130-180) — gold standard
+    1 = Replica jersey (~$80-110) — same look, no fancy fabric
+    2 = Generic stitched jersey (no explicit Authentic/Replica tag)
+    3 = Name & Number tee / T-shirt (~$25-40) — printed cotton, not a real kit
+    4 = Non-jersey item (scarf, hat, ball, etc.)
+
+    Lower number wins. Used as a tiebreaker after explicit keyword match
+    so a user-asked 'scarf' or 'cheap' still gets respected.
+    """
+    if "authentic" in name_lower:
+        return 0
+    if "replica" in name_lower:
+        return 1
+    if ("name" in name_lower and "number" in name_lower) \
+       or "t-shirt" in name_lower or " tee" in name_lower:
+        return 3
+    if "jersey" in name_lower:
+        return 2
+    return 4
+
+
 def _pick_team_product(team: str, keywords: str = "") -> dict | None:
     """Return the best-ranked product row for `team` as a dict, or None if no
     inventory.
 
     Ranking (in order):
     1. In-stock first
-    2. Keyword match count (more matches = higher)
-    3. Preferred age_group (Adult by default; kids / women's when the
-       user's keywords signal that audience)
-    4. On-sale
+    2. Keyword match count (more matches = higher) — respects 'scarf', 'tee',
+       explicit player names, 'authentic'/'replica'/'cheap' the user typed
+    3. Preferred age_group (Adult by default; kids / women's by signal)
+    4. Jersey tier — Authentic > Replica > Stitched Jersey > Tee > Other.
+       Surfaces the premium kit when caller is ambiguous.
     5. Keyword 'jersey' in name (only used when caller passed no keywords)
-    6. Lowest price
+    6. On-sale
+    7. HIGHER price (descending) — within the same tier, prefer the most
+       premium variant. (Reversed from the older 'cheapest first' default.)
 
     If NO product matches ANY keyword term, silently fall back to the
     default jersey/adult ranking so the tool never returns None when the
@@ -506,6 +554,8 @@ def _pick_team_product(team: str, keywords: str = "") -> dict | None:
     kw_lower = keywords.lower()
     preferred_ages = _preferred_age_groups(kw_lower)
     age_rank = (~g["age_group"].isin(preferred_ages)).astype(int)
+    tier_rank = names_lower.apply(_jersey_tier)
+    neg_price = -g["price"].astype(float).fillna(0)
 
     terms = [w for w in kw_lower.split() if w]
     if terms:
@@ -516,28 +566,34 @@ def _pick_team_product(team: str, keywords: str = "") -> dict | None:
                 _instock=(~g["in_stock"]).astype(int),
                 _miss=1,
                 _age=age_rank,
+                _tier=tier_rank,
                 _notkw=(~names_lower.str.contains("jersey")).astype(int),
                 _notsale=(~g["on_sale"]).astype(int),
+                _neg_price=neg_price,
             )
         else:
             g = g.assign(
                 _instock=(~g["in_stock"]).astype(int),
                 _miss=-match_count,
                 _age=age_rank,
+                _tier=tier_rank,
                 _notkw=0,
                 _notsale=(~g["on_sale"]).astype(int),
+                _neg_price=neg_price,
             )
     else:
         g = g.assign(
             _instock=(~g["in_stock"]).astype(int),
             _miss=0,
             _age=age_rank,
+            _tier=tier_rank,
             _notkw=(~names_lower.str.contains("jersey")).astype(int),
             _notsale=(~g["on_sale"]).astype(int),
+            _neg_price=neg_price,
         )
 
-    g = g.sort_values(["_instock", "_miss", "_age", "_notkw", "_notsale", "price"])
-    return g.drop(columns=["_instock", "_miss", "_age", "_notkw", "_notsale"]).iloc[0].to_dict()
+    g = g.sort_values(["_instock", "_miss", "_age", "_tier", "_notkw", "_notsale", "_neg_price"])
+    return g.drop(columns=["_instock", "_miss", "_age", "_tier", "_notkw", "_notsale", "_neg_price"]).iloc[0].to_dict()
 
 
 def _real_pricing(team: str, keywords: str = "") -> dict | None:
