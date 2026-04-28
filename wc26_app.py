@@ -620,8 +620,16 @@ CUSTOM_CSS = """
   }
 
   /* What-If: fixed rank labels on the left of each draggable team list.
-     Heights / paddings / radii MUST match .sortable-item in custom_style. */
-  .rank-stack { display: flex; flex-direction: column; gap: 6px; }
+     Heights / paddings / radii MUST match .sortable-item in custom_style.
+     The 7px margin-top compensates for the iframe component wrapper's
+     implicit top offset (Streamlit iframe baseline + body normalization
+     residual) so both columns share the same first-row baseline. */
+  .rank-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 7px;
+  }
   .rank-label {
     padding: 10px 12px;
     border: 1px solid transparent;
