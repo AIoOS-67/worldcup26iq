@@ -619,6 +619,44 @@ CUSTOM_CSS = """
     margin-bottom: 6px;
   }
 
+  /* What-If: fixed rank labels on the left of each draggable team list.
+     Heights / paddings / radii MUST match .sortable-item in custom_style. */
+  .rank-stack { display: flex; flex-direction: column; gap: 6px; }
+  .rank-label {
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    box-sizing: border-box;
+    user-select: none;
+    line-height: 1.2;
+  }
+  .rank-label.rank-1 {
+    background: linear-gradient(135deg, #f6c945 0%, #d4a017 100%);
+    color: #ffffff;
+    border-color: #b8841a;
+    box-shadow: 0 2px 6px rgba(212, 160, 23, 0.35);
+  }
+  .rank-label.rank-2 {
+    background: linear-gradient(135deg, #e8e8e8 0%, #b0b0b0 100%);
+    color: #000000;
+    border-color: #909090;
+  }
+  .rank-label.rank-3 {
+    background: linear-gradient(135deg, #d68a4d 0%, #b87333 100%);
+    color: #0b1d6b;
+    border-color: #8a4f1e;
+  }
+  .rank-label.rank-4 {
+    background: #5a6478;
+    color: #1a1a1a;
+    border-color: #44495a;
+    font-weight: 500;
+    opacity: 0.85;
+  }
+
   /* What-If bracket view */
   .bracket {
     display: grid;
@@ -1829,6 +1867,15 @@ elif page_id == "whatif":
     }
     """
 
+    rank_stack_html = (
+        '<div class="rank-stack">'
+        '<div class="rank-label rank-1">🏆 1st</div>'
+        '<div class="rank-label rank-2">🥈 2nd</div>'
+        '<div class="rank-label rank-3">🥉 3rd</div>'
+        '<div class="rank-label rank-4">4th</div>'
+        '</div>'
+    )
+
     new_locks: dict[str, dict[str, str]] = {}
     group_keys = list(groups.keys())
     for i in range(0, len(group_keys), 4):
@@ -1841,16 +1888,20 @@ elif page_id == "whatif":
                     f'<div class="gpick-title">{gkey}{badge}</div>',
                     unsafe_allow_html=True,
                 )
-                teams = groups[gkey]
-                code_to_label = {tm: f"≡  {flag(tm)} {team_name(tm)}" for tm in teams}
-                label_to_code = {v: k for k, v in code_to_label.items()}
-                initial_items = list(code_to_label.values())
-                sorted_labels = sort_items(
-                    initial_items,
-                    key=f"sort_{gkey}",
-                    direction="vertical",
-                    custom_style=sortable_style,
-                )
+                rank_col, team_col = st.columns([1, 3], gap="small")
+                with rank_col:
+                    st.markdown(rank_stack_html, unsafe_allow_html=True)
+                with team_col:
+                    teams = groups[gkey]
+                    code_to_label = {tm: f"≡  {flag(tm)} {team_name(tm)}" for tm in teams}
+                    label_to_code = {v: k for k, v in code_to_label.items()}
+                    initial_items = list(code_to_label.values())
+                    sorted_labels = sort_items(
+                        initial_items,
+                        key=f"sort_{gkey}",
+                        direction="vertical",
+                        custom_style=sortable_style,
+                    )
                 if sorted_labels != initial_items:
                     st.session_state["wc26_dragged"].add(gkey)
                 if gkey in st.session_state["wc26_dragged"] and len(sorted_labels) >= 3:
