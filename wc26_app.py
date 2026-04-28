@@ -2042,19 +2042,19 @@ elif page_id == "ask":
 
     if _claude_is_asking_audience(st.session_state["ask_history"]):
         st.markdown(
-            '<div style="margin:8px 0 4px;font-size:0.85rem;color:#94a3c5;">'
-            '⚡ Quick pick:</div>',
+            f'<div style="margin:8px 0 4px;font-size:0.85rem;color:#94a3c5;">'
+            f'{t("quick_pick_label")}</div>',
             unsafe_allow_html=True,
         )
         b1, b2, b3, b4 = st.columns(4)
         audience_opts = [
-            (b1, "👨 Men's",    "我要男士款（成人球员版/复刻版）"),
-            (b2, "👩 Women's",  "我要女士款（女款剪裁）"),
-            (b3, "👦 Youth",    "我要青少年/儿童款"),
-            (b4, "👨‍👩‍👧 Family", "给全家买 — 爸爸、妈妈、孩子一人一件"),
+            (b1, "men",    t("quick_pick_men_label"),    t("quick_pick_men_prompt")),
+            (b2, "women",  t("quick_pick_women_label"),  t("quick_pick_women_prompt")),
+            (b3, "youth",  t("quick_pick_youth_label"),  t("quick_pick_youth_prompt")),
+            (b4, "family", t("quick_pick_family_label"), t("quick_pick_family_prompt")),
         ]
-        for col, label, prompt in audience_opts:
-            if col.button(label, key=f"aud_btn_{label}", use_container_width=True):
+        for col, slug, label, prompt in audience_opts:
+            if col.button(label, key=f"aud_btn_{slug}", use_container_width=True):
                 st.session_state["_preset_q"] = prompt
                 st.rerun()
 
