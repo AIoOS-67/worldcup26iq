@@ -1748,9 +1748,17 @@ elif page_id == "whatif":
     st.markdown(f'<p class="section-caption">{t("whatif_caption")}</p>', unsafe_allow_html=True)
 
     fx = load_fixtures()
-    groups = infer_groups(fx)
     dc = load_dc_params()
-    baseline_probs = load_probs().set_index("team")["p_W"].to_dict()
+    probs_df = load_probs()
+    baseline_probs = probs_df.set_index("team")["p_W"].to_dict()
+
+    # Order each group by advance probability (p_R32) so the default ranking
+    # matches the Groups Overview page — top of card is the model favourite.
+    adv_lookup = probs_df.set_index("team")["p_R32"].to_dict()
+    groups = {
+        gkey: sorted(teams, key=lambda t: adv_lookup.get(t, 0.0), reverse=True)
+        for gkey, teams in infer_groups(fx).items()
+    }
 
     if "wc26_dragged" not in st.session_state:
         st.session_state["wc26_dragged"] = set()
@@ -1767,6 +1775,8 @@ elif page_id == "whatif":
     # 3rd-placed teams advance only if among top 8 across all 12 groups.
     from streamlit_sortables import sort_items
 
+    # SortableJS reorders DOM nodes on drag, so :nth-child(N) rules automatically
+    # repaint colors as the user shuffles teams between positions.
     sortable_style = """
     .sortable-component { background: transparent; padding: 0; border: none; }
     .sortable-container { background: transparent; padding: 0; border: none; }
@@ -1778,21 +1788,45 @@ elif page_id == "whatif":
     }
     .sortable-item {
         width: 100% !important;
-        background: #1b2742 !important;
-        color: #e8edf7 !important;
-        border: 1px solid #2a3b5f !important;
+        border: 1px solid transparent !important;
         border-radius: 6px !important;
         padding: 10px 12px !important;
         margin: 0 !important;
         font-size: 0.9rem !important;
+        font-weight: 600 !important;
         cursor: grab !important;
         box-sizing: border-box !important;
+        transition: filter 0.15s ease;
     }
-    .sortable-item:hover {
-        background: #243352 !important;
-        border-color: #3a4d75 !important;
-    }
+    .sortable-item:hover { filter: brightness(1.08); }
     .sortable-item:active { cursor: grabbing !important; }
+
+    /* 🏆 1st — gold bg, white text */
+    .sortable-item:nth-child(1) {
+        background: linear-gradient(135deg, #f6c945 0%, #d4a017 100%) !important;
+        color: #ffffff !important;
+        border-color: #b8841a !important;
+        box-shadow: 0 2px 6px rgba(212, 160, 23, 0.35);
+    }
+    /* 🥈 2nd — silver bg, black text */
+    .sortable-item:nth-child(2) {
+        background: linear-gradient(135deg, #e8e8e8 0%, #b0b0b0 100%) !important;
+        color: #000000 !important;
+        border-color: #909090 !important;
+    }
+    /* 🥉 3rd — bronze bg, blue text */
+    .sortable-item:nth-child(3) {
+        background: linear-gradient(135deg, #d68a4d 0%, #b87333 100%) !important;
+        color: #0b1d6b !important;
+        border-color: #8a4f1e !important;
+    }
+    /* 4th — gray bg, dark text (eliminated) */
+    .sortable-item:nth-child(4) {
+        background: #5a6478 !important;
+        color: #1a1a1a !important;
+        border-color: #44495a !important;
+        font-weight: 500 !important;
+    }
     """
 
     new_locks: dict[str, dict[str, str]] = {}
