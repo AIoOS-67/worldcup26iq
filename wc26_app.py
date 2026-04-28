@@ -1909,8 +1909,14 @@ elif page_id == "whatif":
                     # Tail each team with its baseline p_R32 (advance prob) so
                     # the user sees the model's intrinsic rating next to the
                     # name even after dragging — matches Groups Overview.
+                    # "Bosnia and Herzegovina" is the only English name that
+                    # wraps in this narrow column; abbreviate just that one
+                    # (other languages already render it short: 波黑, Bosnia, …).
+                    def _disp(tm: str) -> str:
+                        n = team_name(tm)
+                        return "Bosnia & Herz." if n == "Bosnia and Herzegovina" else n
                     code_to_label = {
-                        tm: f"≡  {flag(tm)} {team_name(tm)} — {adv_lookup.get(tm, 0.0):.0%}"
+                        tm: f"≡  {flag(tm)} {_disp(tm)} — {adv_lookup.get(tm, 0.0):.0%}"
                         for tm in teams
                     }
                     label_to_code = {v: k for k, v in code_to_label.items()}
