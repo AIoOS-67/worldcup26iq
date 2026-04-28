@@ -1752,9 +1752,8 @@ elif page_id == "whatif":
     dc = load_dc_params()
     baseline_probs = load_probs().set_index("team")["p_W"].to_dict()
 
-    # Auto-init session state
-    if "wc26_locks" not in st.session_state:
-        st.session_state["wc26_locks"] = {}
+    if "wc26_dragged" not in st.session_state:
+        st.session_state["wc26_dragged"] = set()
 
     st.markdown(f'<div class="section-title" style="font-size:1.1rem;">{t("whatif_lock")}</div>', unsafe_allow_html=True)
     st.markdown(
@@ -1762,59 +1761,47 @@ elif page_id == "whatif":
         unsafe_allow_html=True,
     )
 
-    # Cycle: unset → 🏆 (1st) → 🥈 (2nd) → 🥉 (3rd) → unset. Selecting a slot
-    # displaces any other team already in that slot for the same group.
+    # Drag-to-rank: top of card → 🏆 1st, 2nd row → 🥈, 3rd row → 🥉, bottom → 4th
+    # (eliminated). A group's order only counts as a lock once the user has
+    # actually dragged it (detected by comparing returned order to default).
     # 3rd-placed teams advance only if among top 8 across all 12 groups.
-    def _cycle_lock(gkey: str, team: str):
-        locks = st.session_state["wc26_locks"].setdefault(gkey, {})
-        if locks.get("1st") == team:
-            locks.pop("1st", None)
-            locks["2nd"] = team
-        elif locks.get("2nd") == team:
-            locks.pop("2nd", None)
-            locks["3rd"] = team
-        elif locks.get("3rd") == team:
-            locks.pop("3rd", None)
-        else:
-            locks["1st"] = team
-        if not locks:
-            st.session_state["wc26_locks"].pop(gkey, None)
+    from streamlit_sortables import sort_items
 
+    new_locks: dict[str, dict[str, str]] = {}
     group_keys = list(groups.keys())
     for i in range(0, len(group_keys), 4):
         cols = st.columns(4)
         for j, gkey in enumerate(group_keys[i:i + 4]):
             with cols[j]:
-                st.markdown(f'<div class="gpick-title">{gkey}</div>',
-                            unsafe_allow_html=True)
-                locks = st.session_state["wc26_locks"].get(gkey, {})
-                for tm in groups[gkey]:
-                    if locks.get("1st") == tm:
-                        badge, btn_type = "🏆", "primary"
-                    elif locks.get("2nd") == tm:
-                        badge, btn_type = "🥈", "primary"
-                    elif locks.get("3rd") == tm:
-                        badge, btn_type = "🥉", "primary"
-                    else:
-                        badge, btn_type = "　", "secondary"
-                    label = f"{badge} {flag(tm)} {team_name(tm)}"
-                    st.button(
-                        label,
-                        key=f"gpick_{gkey}_{tm}",
-                        use_container_width=True,
-                        type=btn_type,
-                        on_click=_cycle_lock,
-                        args=(gkey, tm),
-                    )
-
-    new_locks = {g: dict(v) for g, v in st.session_state["wc26_locks"].items() if v}
+                is_locked = gkey in st.session_state["wc26_dragged"]
+                badge = " 🔒" if is_locked else ""
+                st.markdown(
+                    f'<div class="gpick-title">{gkey}{badge}</div>',
+                    unsafe_allow_html=True,
+                )
+                teams = groups[gkey]
+                code_to_label = {tm: f"{flag(tm)} {team_name(tm)}" for tm in teams}
+                label_to_code = {v: k for k, v in code_to_label.items()}
+                initial_items = list(code_to_label.values())
+                sorted_labels = sort_items(initial_items, key=f"sort_{gkey}")
+                if sorted_labels != initial_items:
+                    st.session_state["wc26_dragged"].add(gkey)
+                if gkey in st.session_state["wc26_dragged"] and len(sorted_labels) >= 3:
+                    sorted_codes = [label_to_code[lbl] for lbl in sorted_labels]
+                    new_locks[gkey] = {
+                        "1st": sorted_codes[0],
+                        "2nd": sorted_codes[1],
+                        "3rd": sorted_codes[2],
+                    }
 
     st.markdown("---")
     c1, c2, c3 = st.columns([1, 1, 3])
     n_sims = c1.selectbox(t("whatif_sims"), [500, 1000, 2000, 5000], index=1)
     run = c2.button(t("whatif_run"), type="primary", use_container_width=True)
     if c3.button(t("whatif_reset")):
-        st.session_state["wc26_locks"] = {}
+        st.session_state["wc26_dragged"] = set()
+        for gkey in group_keys:
+            st.session_state.pop(f"sort_{gkey}", None)
         st.rerun()
 
     if run:
