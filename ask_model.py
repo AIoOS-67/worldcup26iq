@@ -919,12 +919,15 @@ def parse_routing(question: str, history: list | None = None) -> tuple[str, str]
       what is obviously a multi-turn merch thread.
     - Otherwise → both (default dual-AI chat).
     """
+    # Gemini intentionally disabled — all routes funnel to Claude.
+    # @gemini prefix is still stripped so the legacy command silently routes
+    # to Claude instead of leaking the literal "@gemini" into the prompt.
     q = question.strip()
     low = q.lower()
     if low.startswith("@claude"):
         return "claude", q[len("@claude"):].strip(":,. ")
     if low.startswith("@gemini"):
-        return "gemini", q[len("@gemini"):].strip(":,. ")
+        return "claude", q[len("@gemini"):].strip(":,. ")
     if _is_commerce_question(q):
         return "claude", q
     if history and _is_short_followup(q):
@@ -949,7 +952,7 @@ def parse_routing(question: str, history: list | None = None) -> tuple[str, str]
             gemini_idx = next(i for i, e in enumerate(reversed(history)) if e is last_gemini)
             if claude_idx < gemini_idx:
                 return "claude", q
-    return "both", q
+    return "claude", q
 
 
 # Backwards-compat shim (older Streamlit pages may still call ask())
