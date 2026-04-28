@@ -361,7 +361,7 @@ def merch_link(team: str, kind: str = "jersey") -> str:
 
     Falls back to a wrapped search URL when the team has no inventory in the
     feed (~11 of the 48 WC26 teams, mostly lower-profile sides)."""
-    product = find_team_product(team, prefer_keyword=kind)
+    product = find_team_product(team, keywords=kind)
     if product and product.get("link"):
         return product["link"]
     # Fallback — wrapped Fanatics search
@@ -981,13 +981,13 @@ def load_impact_earnings() -> dict:
     }
 
 
-def find_team_product(team: str, prefer_keyword: str = "jersey") -> dict | None:
+def find_team_product(team: str, keywords: str = "jersey") -> dict | None:
     """Thin re-export of ask_model._pick_team_product so the same ranking
     logic is used by merch_link() (this module) and the Claude pricing tool
     (ask_model). Single source of truth for the Fanatics feed lookup avoids
     the cross-module import race we hit earlier."""
     from ask_model import _pick_team_product
-    return _pick_team_product(team, prefer_keyword=prefer_keyword)
+    return _pick_team_product(team, keywords=keywords)
 
 
 @st.cache_data
