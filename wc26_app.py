@@ -631,7 +631,7 @@ CUSTOM_CSS = """
     text-align: center;
     box-sizing: border-box;
     user-select: none;
-    line-height: 1.2;
+    line-height: 1.5;
   }
   .rank-label.rank-1 {
     background: linear-gradient(135deg, #f6c945 0%, #d4a017 100%);
@@ -1832,6 +1832,7 @@ elif page_id == "whatif":
         margin: 0 !important;
         font-size: 0.9rem !important;
         font-weight: 600 !important;
+        line-height: 1.5 !important;
         cursor: grab !important;
         box-sizing: border-box !important;
         transition: filter 0.15s ease;
